@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0A1B24">
+<title>Deck Review Admin</title>
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700&family=Source+Sans+3:wght@400;600;700&display=swap">
+<style>
+/* Deck Review admin page (Con, 30 Oct 2026): approve and manage accounts. Colours: edit here. */
+:root{
+  --bg:#0A1B24;--paper:#10262F;--ink:#E3EEF2;--muted:#8FA9B5;--line:#24414E;--sea:#5FB2D1;
+  --green:#3DDC84;--green-bg:#123526;--amber:#FFC44D;--amber-bg:#3A2F12;--red:#EF6B71;--red-bg:#3A1A1D;--grey:#8FA9B5;--grey-bg:#1A313B;--blue:#5FB2D1;--blue-bg:#12303D;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 "Source Sans 3",system-ui,sans-serif}
+main{max-width:760px;margin:0 auto;padding:18px 16px 40px}
+h1,h2{font-family:"Barlow Condensed",sans-serif;font-weight:700;letter-spacing:.02em;margin:0}
+h1{font-size:1.9rem}h2{font-size:1.25rem;margin:18px 0 8px}
+.sub{color:var(--muted);margin:2px 0 14px;font-size:.92rem}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:14px;margin:0 0 10px}
+input{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 12px;margin:0 0 10px}
+input:focus{outline:2px solid var(--sea);outline-offset:1px}
+button{font:inherit;cursor:pointer}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:8px 14px;border-radius:10px;border:1px solid var(--sea);background:var(--sea);color:#062030;font-weight:700}
+.btn.alt{background:transparent;color:var(--sea)}
+.btn.warn{background:transparent;color:var(--red);border-color:var(--red)}
+.btn:disabled{opacity:.5;cursor:default}
+.full{width:100%}
+.link{background:none;border:0;color:var(--sea);text-decoration:underline;padding:8px 0}
+.err{color:var(--red);font-weight:600;min-height:1.2em;margin:0 0 8px}
+.muted{color:var(--muted)}.small{font-size:.86rem}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
+.top .btns{display:flex;gap:8px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin:0 0 12px}
+.stat{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:8px 10px}
+.stat b{display:block;font-family:"Barlow Condensed",sans-serif;font-size:1.6rem;line-height:1.1}
+.stat span{font-size:.8rem;color:var(--muted)}
+.search{position:sticky;top:0;z-index:2;background:var(--bg);padding:6px 0 2px}
+.search input{margin:0 0 8px;padding-left:38px;background:var(--paper) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238FA9B5' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E") 11px 50%/18px no-repeat}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px}
+.chip{border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:999px;padding:5px 11px;font-size:.85rem}
+.chip.on{border-color:var(--sea);color:var(--ink);background:var(--blue-bg)}
+.count{font-size:.85rem;color:var(--muted);margin:0 0 8px}
+.acc{border-left:5px solid var(--grey)}
+.acc.waiting{border-left-color:var(--grey)}.acc.approved{border-left-color:var(--green)}.acc.admin{border-left-color:var(--blue)}
+.acc .email{font-weight:700;font-size:1.05rem;word-break:break-all}
+.pills{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 8px}
+.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 10px;font-size:.82rem;font-weight:700;border:1px solid}
+.pill::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}
+.pill.green{color:var(--green);background:var(--green-bg);border-color:color-mix(in srgb,var(--green) 45%,transparent)}
+.pill.amber{color:var(--amber);background:var(--amber-bg);border-color:color-mix(in srgb,var(--amber) 45%,transparent)}
+.pill.red{color:var(--red);background:var(--red-bg);border-color:color-mix(in srgb,var(--red) 45%,transparent)}
+.pill.grey{color:var(--grey);background:var(--grey-bg);border-color:var(--line)}
+.pill.blue{color:var(--blue);background:var(--blue-bg);border-color:color-mix(in srgb,var(--blue) 45%,transparent)}
+dl{display:grid;grid-template-columns:max-content 1fr;gap:3px 12px;margin:0 0 10px;font-size:.9rem}
+dt{color:var(--muted)}dd{margin:0;word-break:break-word}
+.warnline{color:var(--red);font-weight:600;font-size:.9rem;margin:0 0 8px}
+.acts{display:flex;gap:8px;flex-wrap:wrap}
+.acts .btn{min-height:38px;padding:6px 12px;font-size:.92rem}
+.legend{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center;z-index:10}
+.sheet{background:var(--paper);border:1px solid var(--line);border-radius:16px 16px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));width:100%;max-width:560px}
+.sheet .acts{margin-top:12px}
+code{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:.9em;word-break:break-all}
+ol{padding-left:20px;margin:6px 0}
+</style>
+</head>
+<body>
+<main id="app"><p class="muted">Loading…</p></main>
+<script>
+"use strict";
+const FB = {"apiKey": "AIzaSyBhLM8KRG4dXRWp7MMa4T49BU3-X-G1vw8", "authDomain": "deck-reviewer-c6083.firebaseapp.com", "projectId": "deck-reviewer-c6083", "storageBucket": "deck-reviewer-c6083.firebasestorage.app", "messagingSenderId": "385286445064", "appId": "1:385286445064:web:be38e62aef158ab27499bd"};                                  // the same Firebase config as the app (stamped by build.py)
+const BUILD_ID = "72934783bb1a";
+const FBV = "10.12.2";
+const TRIAL_MS = 3 * 3600 * 1000;                           // the free trial lasts 3 hours (the same in the app and in the Firestore rules)
+const ADMIN_EMAIL = "deck-admin@" + ((FB && FB.authDomain) || "deck-review.app");   // the admin page's own login: only the password is typed (never written here)
+const app = document.getElementById("app");
+
+function h(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const k in attrs || {}) { const v = attrs[k]; if (v == null || v === false) continue; if (k.startsWith("on")) e.addEventListener(k.slice(2), v); else if (k === "class") e.className = v; else e.setAttribute(k, v === true ? "" : v); }
+  for (const k of kids.flat(Infinity)) if (k != null && k !== false) e.append(k.nodeType ? k : String(k));
+  return e;
+}
+const show = (...n) => app.replaceChildren(...n.flat(Infinity).filter(Boolean));
+const fmtDT = ms => ms ? new Date(ms).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "unknown";
+const left = ms => { const m = Math.ceil(ms / 60000); return m <= 1 ? "less than a minute" : m < 60 ? m + " min" : Math.floor(m / 60) + " h " + (m % 60) + " min"; };
+const dur = ms => { const m = Math.round(ms / 60000); return m < 60 ? Math.max(1, m) + " min" : m < 2880 ? Math.round(m / 60) + " h" : Math.round(m / 1440) + " days"; };
+function sheet(title, body, buttons) {
+  const o = h("div", { class: "overlay" }), close = () => o.remove();
+  o.append(h("div", { class: "sheet", role: "dialog", "aria-label": title }, h("h2", { style: "margin:0 0 8px" }, title), body, h("div", { class: "acts" }, buttons(close))));
+  o.addEventListener("click", e => { if (e.target === o) close(); });
+  document.body.append(o);
+}
+const confirmBox = (title, text, label) => new Promise(res => sheet(title, h("p", null, text), close => [
+  h("button", { class: "btn", type: "button", onclick: () => { close(); res(true); } }, label), h("button", { class: "btn alt", type: "button", onclick: () => { close(); res(false); } }, "Cancel")]));
+function errText(e) {
+  const c = e && e.code || "";
+  return ({ "auth/invalid-credential": "Wrong password.", "auth/wrong-password": "Wrong password.", "auth/user-not-found": "Wrong password.", "auth/too-many-requests": "Too many tries. Wait a few minutes and try again.",
+    "auth/email-already-in-use": "The admin login already exists. Go back and type its password.", "auth/weak-password": "Choose a password of at least 6 characters.",
+    "auth/network-request-failed": "No internet connection.", "permission-denied": "Not allowed (check that this login is marked admin in Firebase and that the latest rules are pasted)." })[c]
+    || (/permission/i.test(c + (e && e.message)) ? "Not allowed (check that this login is marked admin in Firebase and that the latest rules are pasted)." : "Something went wrong" + (c ? " (" + c + ")" : "") + ". Try again.");
+}
+
+/* ---- Firebase (the same adapter as the app; the accounts test swaps in window.__FB_MOCK) */
+async function fbAdapter() {
+  const base = "https://www.gstatic.com/firebasejs/" + FBV + "/";
+  const [A, AU, F] = await Promise.all(["firebase-app.js", "firebase-auth.js", "firebase-firestore.js"].map(f => import(base + f)));
+  let auth, db;
+  const who = u => u ? { uid: u.uid, email: u.email } : null;
+  const plain = o => { if (!o) return o; const r = {}; for (const k in o) r[k] = o[k] && typeof o[k].toMillis === "function" ? o[k].toMillis() : o[k]; return r; };
+  return {
+    async init(cfg) { const fa = A.initializeApp(cfg); auth = AU.getAuth(fa); db = F.getFirestore(fa); return await new Promise(res => { const off = AU.onAuthStateChanged(auth, u => { off(); res(who(u)); }); }); },
+    async signIn(e, p) { return who((await AU.signInWithEmailAndPassword(auth, e, p)).user); },
+    async signUp(e, p) { return who((await AU.createUserWithEmailAndPassword(auth, e, p)).user); },
+    signOut: () => AU.signOut(auth),
+    async get(path) { const s = await F.getDoc(F.doc(db, path)); return s.exists() ? plain(s.data()) : null; },
+    set: (path, data, merge) => F.setDoc(F.doc(db, path), data, merge ? { merge: true } : {}),
+    del: path => F.deleteDoc(F.doc(db, path)),
+    stamp: () => F.serverTimestamp(),
+    gone: () => F.deleteField(),                              // remove a field (with a merge)
+    async list(coll) { const s = await F.getDocs(F.collection(db, coll)); return s.docs.map(d => Object.assign({ id: d.id }, plain(d.data()))); }
+  };
+}
+const cloud = { api: null, user: null };
+async function cloudInit() { if (!cloud.api) { const api = window.__FB_MOCK || await fbAdapter(); cloud.user = await api.init(FB); cloud.api = api; } return cloud.user; }
+async function serverNow() { await cloud.api.set("clock/" + cloud.user.uid, { t: cloud.api.stamp() }); const d = await cloud.api.get("clock/" + cloud.user.uid); return d.t - performance.now(); }   // offset: server time = offset + performance.now()
+async function trialCode(code) {                           // the trial bank's key, made one-way from the access code (build.py and the app do the same)
+  const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(code), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return [...new Uint8Array(await crypto.subtle.sign("HMAC", k, new TextEncoder().encode("deck-trial-v1")))].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+/* ---- screens */
+function viewLogin(msg, create) {
+  const pw = h("input", { type: "password", id: "apw", autocomplete: create ? "new-password" : "current-password", "aria-label": "Admin password", placeholder: "Admin password" });
+  const pw2 = create ? h("input", { type: "password", id: "apw2", autocomplete: "new-password", "aria-label": "Repeat password", placeholder: "Repeat password" }) : null;
+  const err = h("div", { class: "err", role: "alert" }, msg || "");
+  const btn = h("button", { class: "btn full", type: "submit" }, create ? "Create the admin login" : "Open");
+  show(h("h1", null, "Deck Review · Admin"), h("p", { class: "sub" }, "Approve and manage the reviewer's accounts."),
+    h("form", { class: "card", onsubmit: async ev => {
+      ev.preventDefault(); err.textContent = "";
+      if (!pw.value) { err.textContent = "Type the password."; return; }
+      if (create && pw.value !== pw2.value) { err.textContent = "The two passwords are not the same."; return; }
+      btn.disabled = true; btn.textContent = create ? "Creating…" : "Opening…";
+      try {
+        await cloudInit();
+        const u = create ? await cloud.api.signUp(ADMIN_EMAIL, pw.value) : await cloud.api.signIn(ADMIN_EMAIL, pw.value);
+        cloud.user = u;
+        if (create) await cloud.api.set("users/" + u.uid, { email: u.email, approved: false, t: Date.now() });
+        afterLogin();
+      } catch (e) { btn.disabled = false; btn.textContent = create ? "Create the admin login" : "Open"; err.textContent = errText(e); }
+    } }, h("h2", { style: "margin:0 0 10px" }, create ? "First-time setup" : "Password"),
+      create ? h("p", { class: "small muted", style: "margin:0 0 10px" }, "Once only: choose the admin password. This creates the admin login in your Firebase.") : null,
+      pw, pw2, err, btn,
+      h("button", { class: "link", type: "button", onclick: () => viewLogin("", !create) }, create ? "Back to the password" : "First-time setup")));
+  pw.focus();
+}
+async function afterLogin() {
+  show(h("p", { class: "muted" }, "Checking…"));
+  let p = null; try { p = await cloud.api.get("users/" + cloud.user.uid); } catch (e) {}
+  if (!p || !p.admin) return viewNotAdmin();
+  try {                                                     // keep the free-trial key in step with the access code (the trial cannot start without it)
+    const v = await cloud.api.get("secret/vault");
+    if (v && v.code) { const tc = await trialCode(v.code), cur = await cloud.api.get("secret/trial"); if (!cur || cur.code !== tc) await cloud.api.set("secret/trial", { code: tc, t: Date.now() }); }
+    ST.noVault = !(v && v.code);
+  } catch (e) {}
+  viewDash();
+}
+function viewNotAdmin() {
+  const uid = cloud.user && cloud.user.uid;
+  show(h("h1", null, "Deck Review · Admin"), h("div", { class: "card" },
+    h("h2", { style: "margin:0 0 6px" }, "One more step in Firebase"),
+    h("p", null, "This login works, but it is not marked as the admin yet. Do this once:"),
+    h("ol", null, h("li", null, "Open the Firebase console → Firestore Database → collection ", h("code", null, "users"), "."),
+      h("li", null, "Open the document ", h("code", { id: "uid" }, uid || "?"), " (email ", h("code", null, ADMIN_EMAIL), ")."),
+      h("li", null, "Change ", h("code", null, "approved"), " to true, and add a field ", h("code", null, "admin"), " (type boolean) = true."),
+      h("li", null, "Come back and tap Check again.")),
+    h("div", { class: "acts" }, h("button", { class: "btn", type: "button", onclick: afterLogin }, "Check again"), h("button", { class: "btn alt", type: "button", onclick: logOut }, "Log out"))));
+}
+async function logOut() { try { await cloud.api.signOut(); } catch (e) {} cloud.user = null; viewLogin(); }
+
+/* ---- the accounts */
+const ST = { q: "", f: "all", data: null, off: 0, noVault: false };
+function trialOf(x, now) {                                  // -> { cls, label, detail }
+  if (x.trialStart) {
+    const end = x.trialStart + TRIAL_MS;
+    return now < end ? { key: "running", cls: "amber", label: "Trial running · " + left(end - now) + " left", detail: "Started " + fmtDT(x.trialStart) + ", ends " + fmtDT(end) + (x.trialDev ? " · on " + x.trialDev : "") }
+      : { key: "used", cls: "red", label: "Trial used", detail: "Ran " + fmtDT(x.trialStart) + " to " + fmtDT(end) + (x.trialDev ? " · on " + x.trialDev : "") };
+  }
+  if (x.trialBlocked) return { key: "blocked", cls: "red", label: "Trial refused: device already used", detail: "Tried on " + (x.trialBlocked.dev || "a device") + " on " + fmtDT(x.trialBlocked.at) + (x.trialBlocked.by ? "; that device's trial was used by " + x.trialBlocked.by : "") };
+  return { key: "none", cls: "green", label: "Trial not used", detail: "" };
+}
+async function load() {
+  const [users, devs, sess, trials, off] = await Promise.all([cloud.api.list("users"), cloud.api.list("devices").catch(() => []), cloud.api.list("sessions").catch(() => []), cloud.api.list("trials").catch(() => []), serverNow().catch(() => Date.now() - performance.now())]);
+  const by = l => Object.fromEntries(l.map(d => [d.id, d]));
+  ST.data = { users, devs: by(devs), sess: by(sess), trials }; ST.off = off;
+}
+async function viewDash() {
+  show(h("p", { class: "muted" }, "Loading accounts…"));
+  try { await load(); } catch (e) { return show(h("h1", null, "Deck Review · Admin"), h("div", { class: "card" }, h("p", { class: "err" }, "Could not load the accounts. " + errText(e)), h("button", { class: "btn", type: "button", onclick: viewDash }, "Try again"))); }
+  const search = h("input", { type: "search", id: "q", placeholder: "Search accounts by email", "aria-label": "Search accounts", value: ST.q });
+  const chips = h("div", { class: "chips", role: "group", "aria-label": "Filter" });
+  const count = h("p", { class: "count", role: "status" }), list = h("div", { id: "list" });
+  const draw = () => {
+    const now = ST.off + performance.now(), all = ST.data.users.slice(), q = ST.q.trim().toLowerCase();
+    const filt = { all: () => true, waiting: x => !x.approved, approved: x => x.approved, running: x => trialOf(x, now).key === "running", used: x => ["used", "blocked"].includes(trialOf(x, now).key), sharing: x => (x.alerts || []).length };
+    chips.replaceChildren(...[["all", "All"], ["waiting", "Waiting"], ["approved", "Approved"], ["running", "Trial running"], ["used", "Trial used"], ["sharing", "Possible sharing"]].map(([k, l]) =>
+      h("button", { class: "chip" + (ST.f === k ? " on" : ""), type: "button", "aria-pressed": String(ST.f === k), onclick: () => { ST.f = k; draw(); } }, l + " (" + all.filter(filt[k]).length + ")")));
+    const shown = all.filter(filt[ST.f]).filter(x => !q || (x.email || x.id).toLowerCase().includes(q))
+      .sort((a, b) => (!!a.approved - !!b.approved) || (b.t || 0) - (a.t || 0));
+    count.textContent = shown.length + " of " + all.length + " accounts" + (q ? " matching “" + ST.q.trim() + "”" : "");
+    list.replaceChildren(...(shown.length ? shown.map(x => card(x, now)) : [h("p", { class: "muted" }, "No accounts match.")]));
+  };
+  search.addEventListener("input", () => { ST.q = search.value; draw(); });
+  const u = ST.data.users, now = ST.off + performance.now();
+  const stat = (n, label) => h("div", { class: "stat" }, h("b", null, String(n)), h("span", null, label));
+  show(h("div", { class: "top" }, h("div", null, h("h1", null, "Deck Review · Admin"), h("p", { class: "sub" }, "Accounts, approvals, free trials and devices")),
+      h("div", { class: "btns" }, h("button", { class: "btn alt", type: "button", onclick: viewDash }, "Refresh"), h("button", { class: "btn alt", type: "button", onclick: logOut }, "Log out"))),
+    ST.noVault ? h("p", { class: "warnline" }, "The access code is not saved yet: open the reviewer once with your own admin account and type it (one-time setup). Until then nobody can open the reviewer or the free trial.") : null,
+    h("div", { class: "stats" }, stat(u.length, "accounts"), stat(u.filter(x => !x.approved).length, "waiting"), stat(u.filter(x => x.approved).length, "approved"),
+      stat(u.filter(x => trialOf(x, now).key === "running").length, "trials running"), stat(u.filter(x => (x.alerts || []).length).length, "possible sharing")),
+    h("div", { class: "legend", "aria-label": "Colours" }, h("span", { class: "pill green" }, "Trial not used"), h("span", { class: "pill amber" }, "Trial running"), h("span", { class: "pill red" }, "Trial used")),
+    h("div", { class: "search" }, search, chips), count, list);
+  draw();
+}
+function card(x, now) {
+  const me = cloud.user.uid, d = ST.data.devs[x.id], s = ST.data.sess[x.id], tr = trialOf(x, now), ids = (d && d.ids) || [];
+  const status = x.admin ? h("span", { class: "pill blue" }, "Admin") : x.approved ? h("span", { class: "pill green" }, "Approved") : h("span", { class: "pill grey" }, "Waiting for approval");
+  const act = (label, cls, fn, ask) => h("button", { class: "btn " + cls, type: "button", onclick: async () => { if (ask && !(await confirmBox(label, ask, label))) return; try { await fn(); } catch (e) { sheet("Could not do that", h("p", null, errText(e)), c => [h("button", { class: "btn", type: "button", onclick: c }, "OK")]); } viewDash(); } }, label);
+  const who = x.email || x.id;
+  const acts = x.id === me ? [] : !x.approved
+    ? [act("Approve", "", () => cloud.api.set("users/" + x.id, { approved: true }, true)),
+       act("Delete request", "alt", () => cloud.api.del("users/" + x.id), "Delete the request from " + who + "? They can sign up again later.")]
+    : [act("Reset devices", "alt", () => cloud.api.set("devices/" + x.id, { ids: [], names: {}, reset: "r" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), t: Date.now() }), "Reset the devices of " + who + "? Every device using this account is logged out now and the next device that logs in becomes its device."),
+       (x.alerts || []).length ? act("Dismiss warning", "alt", () => cloud.api.set("users/" + x.id, { alerts: [] }, true)) : null,
+       x.admin ? null : act("Remove access", "warn", () => cloud.api.set("users/" + x.id, { approved: false }, true), "Remove access for " + who + "? They are logged out the next time their device is online.")];
+  if (!x.admin && (tr.key === "used" || tr.key === "blocked")) acts.push(act("Allow a new trial", "alt", async () => {
+    for (const t of ST.data.trials.filter(t => t.uid === x.id || (x.trialBlocked && x.trialBlocked.by && t.email === x.trialBlocked.by))) await cloud.api.del("trials/" + t.id);
+    await cloud.api.set("users/" + x.id, { trialStart: cloud.api.gone(), trialBlocked: cloud.api.gone(), trialDev: cloud.api.gone() }, true);
+  }, "Give " + who + " a new 3-hour free trial? This also frees the device marks of this trial, so the device can be used for a trial again."));
+  return h("div", { class: "card acc " + (x.admin ? "admin" : x.approved ? "approved" : "waiting"), "data-email": who },
+    h("div", { class: "email" }, who, x.id === me ? h("span", { class: "muted small" }, " (this admin page)") : null),
+    h("div", { class: "pills" }, status, x.admin ? null : h("span", { class: "pill " + tr.cls }, tr.label)),
+    h("dl", null,
+      h("dt", null, "Account created"), h("dd", null, fmtDT(x.t)),
+      x.admin ? null : [h("dt", null, "Free trial"), h("dd", null, tr.detail || "Not started")],
+      h("dt", null, "Devices"), h("dd", null, x.admin ? "Not limited" : ids.length + " of 1" + (ids.length ? " (" + ids.map(i => (d.names || {})[i] || "device").join(", ") + ")" : "")),
+      h("dt", null, "Last active"), h("dd", null, s && s.at ? fmtDT(s.at) + (s.name ? " · " + s.name : "") : "Not yet")),
+    (x.alerts || []).length ? h("p", { class: "warnline" }, "⚠ Possible sharing: " + x.alerts.slice(-3).reverse().map(a => "kept studying on " + a.dev + " for " + dur(a.to - a.from) + " after the account moved to " + a.other + " (" + fmtDT(a.from) + ")").join("; ") + ".") : null,
+    h("div", { class: "acts" }, acts));
+}
+
+(async function boot() {
+  if (!FB || typeof FB !== "object") return show(h("h1", null, "Deck Review · Admin"), h("p", { class: "err" }, "Accounts are not switched on in this build (no firebase.json)."));
+  try { const u = await cloudInit(); if (u && u.email === ADMIN_EMAIL) return afterLogin(); if (u) await cloud.api.signOut(); } catch (e) { return viewLogin("No internet connection."); }
+  viewLogin();
+})();
+</script>
+</body>
+</html>

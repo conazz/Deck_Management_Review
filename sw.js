@@ -32,6 +32,7 @@ self.addEventListener("fetch", ev => {
   const url = new URL(req.url);
   if (url.origin === location.origin) {
     if (url.pathname.endsWith("/version.json")) return;                       // always the network: this is how updates are found
+    if (url.pathname.endsWith("/admin.html")) return;                         // the admin page: always the network, never stored (and never mixed up with the app)
     if (req.mode === "navigate" || url.pathname.endsWith("/") || url.pathname.endsWith("/index.html")) { ev.respondWith(networkFirst(req, "./index.html")); return; }
     ev.respondWith(cacheFirst(req)); return;                                   // icons, manifest
   }
