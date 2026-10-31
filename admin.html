@@ -78,7 +78,7 @@ ol{padding-left:20px;margin:6px 0}
 <script>
 "use strict";
 const FB = {"apiKey": "AIzaSyBhLM8KRG4dXRWp7MMa4T49BU3-X-G1vw8", "authDomain": "deck-reviewer-c6083.firebaseapp.com", "projectId": "deck-reviewer-c6083", "storageBucket": "deck-reviewer-c6083.firebasestorage.app", "messagingSenderId": "385286445064", "appId": "1:385286445064:web:be38e62aef158ab27499bd"};                                  // the same Firebase config as the app (stamped by build.py)
-const BUILD_ID = "f7a20f9f7f16";
+const BUILD_ID = "29eef3c1f9d8";
 const FBV = "10.12.2";
 const TRIAL_MS = 3 * 3600 * 1000;                           // the free trial lasts 3 hours (the same in the app and in the Firestore rules)
 const ADMIN_EMAIL = "deck-admin@" + ((FB && FB.authDomain) || "deck-review.app");   // the admin page's own login: only the password is typed (never written here)
@@ -208,7 +208,7 @@ function slotsCard() {                                     // devices allowed pe
   let n = ST.slots;
   const val = h("b", { id: "slotsval", class: "slotsval" }, String(n)), save = h("button", { class: "btn", type: "button", disabled: true }, "Save");
   const set = k => { n = Math.min(5, Math.max(1, n + k)); val.textContent = String(n); save.disabled = n === ST.slots; };
-  const msg = h("p", { class: "small muted", style: "margin:8px 0 0" }, "Applies to every account (the admin is never limited). Lowering it does not log anyone out: accounts already on more devices keep them until you tap Reset devices.");
+  const msg = h("p", { class: "small muted", style: "margin:8px 0 0" }, "Applies to every account that has no limit of its own (set one with Device limit on the account). The admin is never limited. Lowering it does not log anyone out: accounts already on more devices keep them until you tap Reset devices.");
   save.addEventListener("click", async () => {
     if (!(await confirmBox("Devices per account", "Allow " + n + (n === 1 ? " device" : " devices") + " per account from now on?", "Save"))) return;
     save.disabled = true;
@@ -226,7 +226,7 @@ async function viewDash() {
   const count = h("p", { class: "count", role: "status" }), list = h("div", { id: "list" });
   const draw = () => {
     const now = ST.off + performance.now(), all = ST.data.users.slice(), q = ST.q.trim().toLowerCase();
-    const filt = { all: () => true, waiting: x => !x.approved, approved: x => x.approved, running: x => trialOf(x, now).key === "running", used: x => ["used", "blocked"].includes(trialOf(x, now).key), sharing: x => (x.alerts || []).length };
+    const filt = { all: () => true, waiting: x => !x.approved, approved: x => x.approved, running: x => !x.approved && trialOf(x, now).key === "running", used: x => !x.approved && ["used", "blocked"].includes(trialOf(x, now).key), sharing: x => (x.alerts || []).length };
     chips.replaceChildren(...[["all", "All"], ["waiting", "Waiting"], ["approved", "Approved"], ["running", "Trial running"], ["used", "Trial used"], ["sharing", "Possible sharing"]].map(([k, l]) =>
       h("button", { class: "chip" + (ST.f === k ? " on" : ""), type: "button", "aria-pressed": String(ST.f === k), onclick: () => { ST.f = k; draw(); } }, l + " (" + all.filter(filt[k]).length + ")")));
     const shown = all.filter(filt[ST.f]).filter(x => !q || (x.email || x.id).toLowerCase().includes(q))
@@ -242,13 +242,25 @@ async function viewDash() {
     ST.noVault ? h("p", { class: "warnline" }, "The access code is not saved yet: open the reviewer once with your own admin account and type it (one-time setup). Until then nobody can open the reviewer or the free trial.") : null,
     slotsCard(),
     h("div", { class: "stats" }, stat(u.length, "accounts"), stat(u.filter(x => !x.approved).length, "waiting"), stat(u.filter(x => x.approved).length, "approved"),
-      stat(u.filter(x => trialOf(x, now).key === "running").length, "trials running"), stat(u.filter(x => (x.alerts || []).length).length, "possible sharing")),
+      stat(u.filter(x => !x.approved && trialOf(x, now).key === "running").length, "trials running"), stat(u.filter(x => (x.alerts || []).length).length, "possible sharing")),
     h("div", { class: "legend", "aria-label": "Colours" }, h("span", { class: "pill green" }, "Trial not used"), h("span", { class: "pill amber" }, "Trial running"), h("span", { class: "pill red" }, "Trial used")),
     h("div", { class: "search" }, search, chips), count, list);
   draw();
 }
+function limitSheet(x) {                                   // this account's own device limit (or the general one)
+  let n = +x.devices >= 1 ? +x.devices : ST.slots;
+  const val = h("b", { class: "slotsval", id: "ownval" }, String(n));
+  const set = k => { n = Math.min(5, Math.max(1, n + k)); val.textContent = String(n); };
+  const save = async (data, close) => { close(); try { await cloud.api.set("users/" + x.id, data, true); } catch (e) { sheet("Could not do that", h("p", null, errText(e)), c => [h("button", { class: "btn", type: "button", onclick: c }, "OK")]); } viewDash(); };
+  sheet("Devices for " + (x.email || x.id), [h("p", { class: "small muted", style: "margin:0 0 10px" }, "Only this account. Now: " + (+x.devices >= 1 ? x.devices + " (its own limit)" : ST.slots + " (the general setting)") + ". Lowering it does not log anyone out; use Reset devices for that."),
+    h("div", { class: "stepper" }, h("button", { class: "btn alt", type: "button", "aria-label": "One fewer", onclick: () => set(-1) }, "−"), val, h("button", { class: "btn alt", type: "button", "aria-label": "One more", onclick: () => set(1) }, "+"))],
+    close => [h("button", { class: "btn", type: "button", onclick: () => save({ devices: n }, close) }, "Save for this account"),
+      +x.devices >= 1 ? h("button", { class: "btn alt", type: "button", onclick: () => save({ devices: cloud.api.gone() }, close) }, "Use the general setting") : null,
+      h("button", { class: "btn alt", type: "button", onclick: close }, "Cancel")]);
+}
 function card(x, now) {
   const me = cloud.user.uid, d = ST.data.devs[x.id], s = ST.data.sess[x.id], tr = trialOf(x, now), ids = (d && d.ids) || [];
+  const lim = +x.devices >= 1 ? +x.devices : ST.slots, own = +x.devices >= 1;
   const status = x.admin ? h("span", { class: "pill blue" }, "Admin") : x.approved ? h("span", { class: "pill green" }, "Approved") : h("span", { class: "pill grey" }, "Waiting for approval");
   const act = (label, cls, fn, ask) => h("button", { class: "btn " + cls, type: "button", onclick: async () => { if (ask && !(await confirmBox(label, ask, label))) return; try { await fn(); } catch (e) { sheet("Could not do that", h("p", null, errText(e)), c => [h("button", { class: "btn", type: "button", onclick: c }, "OK")]); } viewDash(); } }, label);
   const who = x.email || x.id;
@@ -257,18 +269,19 @@ function card(x, now) {
        act("Delete request", "alt", () => cloud.api.del("users/" + x.id), "Delete the request from " + who + "? They can sign up again later.")]
     : [act("Reset devices", "alt", () => cloud.api.set("devices/" + x.id, { ids: [], names: {}, reset: "r" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), t: Date.now() }), "Reset the devices of " + who + "? Every device using this account is logged out now and must log in again; each new login takes a slot (up to " + ST.slots + ")."),
        (x.alerts || []).length ? act("Dismiss warning", "alt", () => cloud.api.set("users/" + x.id, { alerts: [] }, true)) : null,
+       x.admin ? null : h("button", { class: "btn alt", type: "button", onclick: () => limitSheet(x) }, "Device limit"),
        x.admin ? null : act("Remove access", "warn", () => cloud.api.set("users/" + x.id, { approved: false }, true), "Remove access for " + who + "? They are logged out the next time their device is online.")];
-  if (!x.admin && (tr.key === "used" || tr.key === "blocked")) acts.push(act("Allow a new trial", "alt", async () => {
+  if (!x.admin && !x.approved && (tr.key === "used" || tr.key === "blocked")) acts.push(act("Allow a new trial", "alt", async () => {
     for (const t of ST.data.trials.filter(t => t.uid === x.id || (x.trialBlocked && x.trialBlocked.by && t.email === x.trialBlocked.by))) await cloud.api.del("trials/" + t.id);
     await cloud.api.set("users/" + x.id, { trialStart: cloud.api.gone(), trialBlocked: cloud.api.gone(), trialDev: cloud.api.gone() }, true);
   }, "Give " + who + " a new 3-hour free trial? This also frees the device marks of this trial, so the device can be used for a trial again."));
   return h("div", { class: "card acc " + (x.admin ? "admin" : x.approved ? "approved" : "waiting"), "data-email": who },
     h("div", { class: "email" }, who, x.id === me ? h("span", { class: "muted small" }, " (this admin page)") : null),
-    h("div", { class: "pills" }, status, x.admin ? null : h("span", { class: "pill " + tr.cls }, tr.label)),
+    h("div", { class: "pills" }, status, x.admin || x.approved ? null : h("span", { class: "pill " + tr.cls }, tr.label)),   // approved: the trial no longer matters
     h("dl", null,
       h("dt", null, "Account created"), h("dd", null, fmtDT(x.t)),
-      x.admin ? null : [h("dt", null, "Free trial"), h("dd", null, tr.detail || "Not started")],
-      h("dt", null, "Devices"), h("dd", null, x.admin ? "Not limited" : ids.length + " of " + ST.slots + (ids.length ? " (" + ids.map(i => (d.names || {})[i] || "device").join(", ") + ")" : "")),
+      x.admin || x.approved ? null : [h("dt", null, "Free trial"), h("dd", null, tr.detail || "Not started")],
+      h("dt", null, "Devices"), h("dd", null, x.admin ? "Not limited" : ids.length + " of " + lim + (own ? " (own limit)" : "") + (ids.length ? " (" + ids.map(i => (d.names || {})[i] || "device").join(", ") + ")" : "")),
       h("dt", null, "Last active"), h("dd", null, s && s.at ? fmtDT(s.at) + (s.name ? " · " + s.name : "") : "Not yet")),
     (x.alerts || []).length ? h("p", { class: "warnline" }, "⚠ Possible sharing: " + x.alerts.slice(-3).reverse().map(a => "kept studying on " + a.dev + " for " + dur(a.to - a.from) + " after the account moved to " + a.other + " (" + fmtDT(a.from) + ")").join("; ") + ".") : null,
     h("div", { class: "acts" }, acts));
