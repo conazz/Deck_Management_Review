@@ -78,7 +78,7 @@ ol{padding-left:20px;margin:6px 0}
 <script>
 "use strict";
 const FB = {"apiKey": "AIzaSyBhLM8KRG4dXRWp7MMa4T49BU3-X-G1vw8", "authDomain": "deck-reviewer-c6083.firebaseapp.com", "projectId": "deck-reviewer-c6083", "storageBucket": "deck-reviewer-c6083.firebasestorage.app", "messagingSenderId": "385286445064", "appId": "1:385286445064:web:be38e62aef158ab27499bd"};                                  // the same Firebase config as the app (stamped by build.py)
-const BUILD_ID = "29eef3c1f9d8";
+const BUILD_ID = "a43c555c1c5c";
 const FBV = "10.12.2";
 const TRIAL_MS = 3 * 3600 * 1000;                           // the free trial lasts 3 hours (the same in the app and in the Firestore rules)
 const ADMIN_EMAIL = "deck-admin@" + ((FB && FB.authDomain) || "deck-review.app");   // the admin page's own login: only the password is typed (never written here)
@@ -111,14 +111,14 @@ function errText(e) {
 }
 
 /* ---- Firebase (the same adapter as the app; the accounts test swaps in window.__FB_MOCK) */
-async function fbAdapter() {
+async function fbAdapter(name) {                             // name: a separate Firebase "app" with its own login (the admin page's), so the reviewer's login in this browser is never touched
   const base = "https://www.gstatic.com/firebasejs/" + FBV + "/";
   const [A, AU, F] = await Promise.all(["firebase-app.js", "firebase-auth.js", "firebase-firestore.js"].map(f => import(base + f)));
   let auth, db;
   const who = u => u ? { uid: u.uid, email: u.email } : null;
   const plain = o => { if (!o) return o; const r = {}; for (const k in o) r[k] = o[k] && typeof o[k].toMillis === "function" ? o[k].toMillis() : o[k]; return r; };
   return {
-    async init(cfg) { const fa = A.initializeApp(cfg); auth = AU.getAuth(fa); db = F.getFirestore(fa); return await new Promise(res => { const off = AU.onAuthStateChanged(auth, u => { off(); res(who(u)); }); }); },
+    async init(cfg) { const fa = name ? A.initializeApp(cfg, name) : A.initializeApp(cfg); auth = AU.getAuth(fa); db = F.getFirestore(fa); return await new Promise(res => { const off = AU.onAuthStateChanged(auth, u => { off(); res(who(u)); }); }); },
     async signIn(e, p) { return who((await AU.signInWithEmailAndPassword(auth, e, p)).user); },
     async signUp(e, p) { return who((await AU.createUserWithEmailAndPassword(auth, e, p)).user); },
     signOut: () => AU.signOut(auth),
@@ -130,8 +130,16 @@ async function fbAdapter() {
     async list(coll) { const s = await F.getDocs(F.collection(db, coll)); return s.docs.map(d => Object.assign({ id: d.id }, plain(d.data()))); }
   };
 }
-const cloud = { api: null, user: null };
-async function cloudInit() { if (!cloud.api) { const api = window.__FB_MOCK || await fbAdapter(); cloud.user = await api.init(FB); cloud.api = api; } return cloud.user; }
+const cloud = { api: null, user: null, viaApp: false };
+async function cloudInit() {
+  if (cloud.api) return cloud.user;
+  try {                                                     // 1) an admin account already logged in to the reviewer in this browser (e.g. Con's main account): straight in, no password
+    const main = window.__FB_MOCK || await fbAdapter(), mu = await main.init(FB);
+    if (mu) { const p = await main.get("users/" + mu.uid); if (p && p.admin) { cloud.api = main; cloud.user = mu; cloud.viaApp = true; return mu; } }
+  } catch (e) {}
+  const own = window.__FB_MOCK ? window.__FB_MOCK.named("admin") : await fbAdapter("admin");   // 2) the admin page's own login, kept apart
+  cloud.user = await own.init(FB); cloud.api = own; return cloud.user;
+}
 async function serverNow() { await cloud.api.set("clock/" + cloud.user.uid, { t: cloud.api.stamp() }); const d = await cloud.api.get("clock/" + cloud.user.uid); return d.t - performance.now(); }   // offset: server time = offset + performance.now()
 async function trialCode(code) {                           // the trial bank's key, made one-way from the access code (build.py and the app do the same)
   const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(code), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -185,7 +193,10 @@ function viewNotAdmin() {
       h("li", null, "Come back and tap Check again.")),
     h("div", { class: "acts" }, h("button", { class: "btn", type: "button", onclick: afterLogin }, "Check again"), h("button", { class: "btn alt", type: "button", onclick: logOut }, "Log out"))));
 }
-async function logOut() { try { await cloud.api.signOut(); } catch (e) {} cloud.user = null; viewLogin(); }
+async function logOut() {
+  if (cloud.viaApp) { location.href = "./"; return; }        // opened from the reviewer: go back to it (its login stays)
+  try { await cloud.api.signOut(); } catch (e) {} cloud.user = null; viewLogin();
+}
 
 /* ---- the accounts */
 const ST = { q: "", f: "all", data: null, off: 0, noVault: false, slots: 1 };
@@ -202,21 +213,8 @@ async function load() {
   const [users, devs, sess, trials, off] = await Promise.all([cloud.api.list("users"), cloud.api.list("devices").catch(() => []), cloud.api.list("sessions").catch(() => []), cloud.api.list("trials").catch(() => []), serverNow().catch(() => Date.now() - performance.now())]);
   const by = l => Object.fromEntries(l.map(d => [d.id, d]));
   ST.data = { users, devs: by(devs), sess: by(sess), trials }; ST.off = off;
-  try { const c = await cloud.api.get("config/app"); ST.slots = c && +c.devices >= 1 ? +c.devices : 1; } catch (e) { ST.slots = 1; }
-}
-function slotsCard() {                                     // devices allowed per account: saved in Firestore config/app, read by the app and by the rules (no Firebase console needed)
-  let n = ST.slots;
-  const val = h("b", { id: "slotsval", class: "slotsval" }, String(n)), save = h("button", { class: "btn", type: "button", disabled: true }, "Save");
-  const set = k => { n = Math.min(5, Math.max(1, n + k)); val.textContent = String(n); save.disabled = n === ST.slots; };
-  const msg = h("p", { class: "small muted", style: "margin:8px 0 0" }, "Applies to every account that has no limit of its own (set one with Device limit on the account). The admin is never limited. Lowering it does not log anyone out: accounts already on more devices keep them until you tap Reset devices.");
-  save.addEventListener("click", async () => {
-    if (!(await confirmBox("Devices per account", "Allow " + n + (n === 1 ? " device" : " devices") + " per account from now on?", "Save"))) return;
-    save.disabled = true;
-    try { await cloud.api.set("config/app", { devices: n, t: Date.now() }, true); ST.slots = n; viewDash(); }
-    catch (e) { save.disabled = false; msg.textContent = "Could not save it. " + errText(e); msg.className = "err"; }
-  });
-  return h("div", { class: "card slots" }, h("div", { class: "slotsrow" }, h("div", null, h("b", null, "Devices per account"), h("div", { class: "small muted" }, "Now: " + ST.slots + (ST.slots === 1 ? " device" : " devices"))),
-    h("div", { class: "stepper" }, h("button", { class: "btn alt", type: "button", "aria-label": "One fewer", onclick: () => set(-1) }, "−"), val, h("button", { class: "btn alt", type: "button", "aria-label": "One more", onclick: () => set(1) }, "+")), save), msg);
+  ST.slots = 1;                                             // every account: 1 device, unless it has its own limit (Device limit on its card)
+  try { const c = await cloud.api.get("config/app"); if (c && +c.devices !== 1) await cloud.api.set("config/app", { devices: 1, t: Date.now() }, true); } catch (e) {}   // keep the rules' general value at 1
 }
 async function viewDash() {
   show(h("p", { class: "muted" }, "Loading accounts…"));
@@ -238,9 +236,9 @@ async function viewDash() {
   const u = ST.data.users, now = ST.off + performance.now();
   const stat = (n, label) => h("div", { class: "stat" }, h("b", null, String(n)), h("span", null, label));
   show(h("div", { class: "top" }, h("div", null, h("h1", null, "Deck Review · Admin"), h("p", { class: "sub" }, "Accounts, approvals, free trials and devices")),
-      h("div", { class: "btns" }, h("button", { class: "btn alt", type: "button", onclick: viewDash }, "Refresh"), h("button", { class: "btn alt", type: "button", onclick: logOut }, "Log out"))),
+      h("div", { class: "btns" }, h("button", { class: "btn alt", type: "button", onclick: viewDash }, "Refresh"), h("button", { class: "btn alt", type: "button", onclick: logOut }, cloud.viaApp ? "Back to the reviewer" : "Log out"))),
+    cloud.viaApp ? h("p", { class: "small muted", style: "margin:-6px 0 12px" }, "Opened with your reviewer account " + (cloud.user.email || "") + " (admin).") : null,
     ST.noVault ? h("p", { class: "warnline" }, "The access code is not saved yet: open the reviewer once with your own admin account and type it (one-time setup). Until then nobody can open the reviewer or the free trial.") : null,
-    slotsCard(),
     h("div", { class: "stats" }, stat(u.length, "accounts"), stat(u.filter(x => !x.approved).length, "waiting"), stat(u.filter(x => x.approved).length, "approved"),
       stat(u.filter(x => !x.approved && trialOf(x, now).key === "running").length, "trials running"), stat(u.filter(x => (x.alerts || []).length).length, "possible sharing")),
     h("div", { class: "legend", "aria-label": "Colours" }, h("span", { class: "pill green" }, "Trial not used"), h("span", { class: "pill amber" }, "Trial running"), h("span", { class: "pill red" }, "Trial used")),
@@ -252,10 +250,10 @@ function limitSheet(x) {                                   // this account's own
   const val = h("b", { class: "slotsval", id: "ownval" }, String(n));
   const set = k => { n = Math.min(5, Math.max(1, n + k)); val.textContent = String(n); };
   const save = async (data, close) => { close(); try { await cloud.api.set("users/" + x.id, data, true); } catch (e) { sheet("Could not do that", h("p", null, errText(e)), c => [h("button", { class: "btn", type: "button", onclick: c }, "OK")]); } viewDash(); };
-  sheet("Devices for " + (x.email || x.id), [h("p", { class: "small muted", style: "margin:0 0 10px" }, "Only this account. Now: " + (+x.devices >= 1 ? x.devices + " (its own limit)" : ST.slots + " (the general setting)") + ". Lowering it does not log anyone out; use Reset devices for that."),
+  sheet("Devices for " + (x.email || x.id), [h("p", { class: "small muted", style: "margin:0 0 10px" }, "Only this account. Now: " + (+x.devices >= 1 ? x.devices + " (its own limit)" : "1 (the usual)") + ". Lowering it does not log anyone out; use Reset devices for that."),
     h("div", { class: "stepper" }, h("button", { class: "btn alt", type: "button", "aria-label": "One fewer", onclick: () => set(-1) }, "−"), val, h("button", { class: "btn alt", type: "button", "aria-label": "One more", onclick: () => set(1) }, "+"))],
     close => [h("button", { class: "btn", type: "button", onclick: () => save({ devices: n }, close) }, "Save for this account"),
-      +x.devices >= 1 ? h("button", { class: "btn alt", type: "button", onclick: () => save({ devices: cloud.api.gone() }, close) }, "Use the general setting") : null,
+      +x.devices >= 1 ? h("button", { class: "btn alt", type: "button", onclick: () => save({ devices: cloud.api.gone() }, close) }, "Back to 1 (the usual)") : null,
       h("button", { class: "btn alt", type: "button", onclick: close }, "Cancel")]);
 }
 function card(x, now) {
@@ -270,6 +268,8 @@ function card(x, now) {
     : [act("Reset devices", "alt", () => cloud.api.set("devices/" + x.id, { ids: [], names: {}, reset: "r" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), t: Date.now() }), "Reset the devices of " + who + "? Every device using this account is logged out now and must log in again; each new login takes a slot (up to " + ST.slots + ")."),
        (x.alerts || []).length ? act("Dismiss warning", "alt", () => cloud.api.set("users/" + x.id, { alerts: [] }, true)) : null,
        x.admin ? null : h("button", { class: "btn alt", type: "button", onclick: () => limitSheet(x) }, "Device limit"),
+       x.admin ? (x.email === ADMIN_EMAIL ? null : act("Remove admin", "warn", () => cloud.api.set("users/" + x.id, { admin: false }, true), "Remove admin rights from " + who + "? The account stays approved and keeps studying."))
+         : act("Make admin", "alt", () => cloud.api.set("users/" + x.id, { admin: true }, true), "Make " + who + " an admin? It can open this page from the reviewer's Settings without a password, gets a notice whenever someone signs up, and is not limited to a number of devices."),
        x.admin ? null : act("Remove access", "warn", () => cloud.api.set("users/" + x.id, { approved: false }, true), "Remove access for " + who + "? They are logged out the next time their device is online.")];
   if (!x.admin && !x.approved && (tr.key === "used" || tr.key === "blocked")) acts.push(act("Allow a new trial", "alt", async () => {
     for (const t of ST.data.trials.filter(t => t.uid === x.id || (x.trialBlocked && x.trialBlocked.by && t.email === x.trialBlocked.by))) await cloud.api.del("trials/" + t.id);
@@ -289,7 +289,7 @@ function card(x, now) {
 
 (async function boot() {
   if (!FB || typeof FB !== "object") return show(h("h1", null, "Deck Review · Admin"), h("p", { class: "err" }, "Accounts are not switched on in this build (no firebase.json)."));
-  try { const u = await cloudInit(); if (u && u.email === ADMIN_EMAIL) return afterLogin(); if (u) await cloud.api.signOut(); } catch (e) { return viewLogin("No internet connection."); }
+  try { const u = await cloudInit(); if (u && (cloud.viaApp || u.email === ADMIN_EMAIL)) return afterLogin(); if (u) await cloud.api.signOut(); } catch (e) { return viewLogin("No internet connection."); }
   viewLogin();
 })();
 </script>
