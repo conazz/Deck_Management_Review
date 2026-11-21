@@ -48,7 +48,7 @@ button{font:inherit;cursor:pointer}
 .count{font-size:.85rem;color:var(--muted);margin:0 0 8px}
 .disclaimer{max-width:760px;margin:0 auto 24px;padding:0 16px;text-align:center;font-size:.72rem;line-height:1.45;color:var(--muted)}
 .acc{border-left:5px solid var(--grey)}
-.acc.waiting{border-left-color:var(--grey)}.acc.approved{border-left-color:var(--green)}.acc.admin{border-left-color:var(--blue)}
+.acc.waiting{border-left-color:var(--grey)}.acc.approved{border-left-color:var(--green)}.acc.paused{border-left-color:var(--amber)}.acc.admin{border-left-color:var(--blue)}
 .acc .email{font-weight:700;font-size:1.05rem;word-break:break-all}
 .pills{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 8px}
 .pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 10px;font-size:.82rem;font-weight:700;border:1px solid}
@@ -81,7 +81,7 @@ ol{padding-left:20px;margin:6px 0}
 <script>
 "use strict";
 const FB = {"apiKey": "AIzaSyBhLM8KRG4dXRWp7MMa4T49BU3-X-G1vw8", "authDomain": "deck-reviewer-c6083.firebaseapp.com", "projectId": "deck-reviewer-c6083", "storageBucket": "deck-reviewer-c6083.firebasestorage.app", "messagingSenderId": "385286445064", "appId": "1:385286445064:web:be38e62aef158ab27499bd"};                                  // the same Firebase config as the app (stamped by build.py)
-const BUILD_ID = "8d5bc5a7cd54";
+const BUILD_ID = "5f26d4d48863";
 const FBV = "10.12.2";
 const TRIAL_MS = 3 * 3600 * 1000;                           // the free trial lasts 3 hours (the same in the app and in the Firestore rules)
 const ADMIN_EMAIL = "deck-admin@" + ((FB && FB.authDomain) || "deck-review.app");   // the admin page's own login: only the password is typed (never written here)
@@ -227,8 +227,8 @@ async function viewDash() {
   const count = h("p", { class: "count", role: "status" }), list = h("div", { id: "list" });
   const draw = () => {
     const now = ST.off + performance.now(), all = ST.data.users.slice(), q = ST.q.trim().toLowerCase();
-    const filt = { all: () => true, waiting: x => !x.approved, approved: x => x.approved, running: x => !x.approved && trialOf(x, now).key === "running", used: x => !x.approved && ["used", "blocked"].includes(trialOf(x, now).key), sharing: x => (x.alerts || []).length, locked: x => lockDirect(x).length };
-    chips.replaceChildren(...[["all", "All"], ["waiting", "Waiting"], ["approved", "Approved"], ["running", "Trial running"], ["used", "Trial used"], ["sharing", "Possible sharing"], ["locked", "Opened locked function"]].map(([k, l]) =>
+    const filt = { all: () => true, waiting: x => !x.approved, approved: x => x.approved, running: x => !x.approved && trialOf(x, now).key === "running", used: x => !x.approved && ["used", "blocked"].includes(trialOf(x, now).key), sharing: x => (x.alerts || []).length, locked: x => lockDirect(x).length, paused: x => x.approved && !x.admin && x.paused };
+    chips.replaceChildren(...[["all", "All"], ["waiting", "Waiting"], ["approved", "Approved"], ["running", "Trial running"], ["used", "Trial used"], ["sharing", "Possible sharing"], ["locked", "Opened locked function"], ["paused", "Paused"]].map(([k, l]) =>
       h("button", { class: "chip" + (ST.f === k ? " on" : ""), type: "button", "aria-pressed": String(ST.f === k), onclick: () => { ST.f = k; draw(); } }, l + " (" + all.filter(filt[k]).length + ")")));
     const shown = all.filter(filt[ST.f]).filter(x => !q || (x.email || x.id).toLowerCase().includes(q))
       .sort((a, b) => (!!a.approved - !!b.approved) || (b.t || 0) - (a.t || 0));
@@ -243,7 +243,7 @@ async function viewDash() {
     cloud.viaApp ? h("p", { class: "small muted", style: "margin:-6px 0 12px" }, "Opened with your reviewer account " + (cloud.user.email || "") + " (admin).") : null,
     ST.noVault ? h("p", { class: "warnline" }, "The access code is not saved yet: open the reviewer once with your own admin account and type it (one-time setup). Until then nobody can open the reviewer or the free trial.") : null,
     h("div", { class: "stats" }, stat(u.length, "accounts"), stat(u.filter(x => !x.approved).length, "waiting"), stat(u.filter(x => x.approved).length, "approved"),
-      stat(u.filter(x => !x.approved && trialOf(x, now).key === "running").length, "trials running"), stat(u.filter(x => (x.alerts || []).length).length, "possible sharing"), stat(u.filter(x => lockDirect(x).length).length, "opened a locked function")),
+      stat(u.filter(x => !x.approved && trialOf(x, now).key === "running").length, "trials running"), stat(u.filter(x => (x.alerts || []).length).length, "possible sharing"), stat(u.filter(x => lockDirect(x).length).length, "opened a locked function"), stat(u.filter(x => x.approved && !x.admin && x.paused).length, "paused")),
     h("div", { class: "legend", "aria-label": "Colours" }, h("span", { class: "pill green" }, "Trial not used"), h("span", { class: "pill amber" }, "Trial running"), h("span", { class: "pill red" }, "Trial used")),
     h("div", { class: "search" }, search, chips), count, list);
   draw();
@@ -288,7 +288,7 @@ function limitSheet(x) {                                   // this account's own
 function card(x, now) {
   const me = cloud.user.uid, d = ST.data.devs[x.id], s = ST.data.sess[x.id], tr = trialOf(x, now), ids = (d && d.ids) || [];
   const lim = +x.devices >= 1 ? +x.devices : ST.slots, own = +x.devices >= 1;
-  const status = x.admin ? h("span", { class: "pill blue" }, "Admin") : x.approved ? h("span", { class: "pill green" }, "Approved") : h("span", { class: "pill grey" }, "Waiting for approval");
+  const status = x.admin ? h("span", { class: "pill blue" }, "Admin") : x.approved && x.paused ? h("span", { class: "pill amber" }, "Paused") : x.approved ? h("span", { class: "pill green" }, "Approved") : h("span", { class: "pill grey" }, "Waiting for approval");
   const act = (label, cls, fn, ask) => h("button", { class: "btn " + cls, type: "button", onclick: async () => { if (ask && !(await confirmBox(label, ask, label))) return; try { await fn(); } catch (e) { sheet("Could not do that", h("p", null, errText(e)), c => [h("button", { class: "btn", type: "button", onclick: c }, "OK")]); } viewDash(); } }, label);
   const who = x.email || x.id;
   const acts = x.id === me ? [] : !x.approved
@@ -301,18 +301,22 @@ function card(x, now) {
        x.admin ? null : h("button", { class: "btn alt", type: "button", onclick: () => limitSheet(x) }, "Device limit"),
        x.admin ? (x.email === ADMIN_EMAIL ? null : act("Remove admin", "warn", () => cloud.api.set("users/" + x.id, { admin: false }, true), "Remove admin rights from " + who + "? The account stays approved and keeps studying."))
          : act("Make admin", "alt", () => cloud.api.set("users/" + x.id, { admin: true }, true), "Make " + who + " an admin? It can open this page from the reviewer's Settings without a password, gets a notice whenever someone signs up, and is not limited to a number of devices."),
+       x.admin ? null : x.paused
+         ? act("Resume access", "", () => cloud.api.set("users/" + x.id, { paused: cloud.api.gone(), pausedAt: cloud.api.gone() }, true))
+         : act("Pause access", "alt", () => cloud.api.set("users/" + x.id, { paused: true, pausedAt: Date.now() }, true), "Pause " + who + "? They are blocked within seconds and see a message that their access is paused. Their account, plan, devices and saved progress are all kept. You can resume any time."),
        x.admin ? null : act("Remove access", "warn", () => cloud.api.set("users/" + x.id, { approved: false }, true), "Remove access for " + who + "? They are logged out the next time their device is online.")];
   if (!x.admin && !x.approved && (tr.key === "used" || tr.key === "blocked")) acts.push(act("Allow a new trial", "alt", async () => {
     for (const t of ST.data.trials.filter(t => t.uid === x.id || (x.trialBlocked && x.trialBlocked.by && t.email === x.trialBlocked.by))) await cloud.api.del("trials/" + t.id);
     await cloud.api.set("users/" + x.id, { trialStart: cloud.api.gone(), trialBlocked: cloud.api.gone(), trialDev: cloud.api.gone() }, true);
   }, "Give " + who + " a new 3-hour free trial? This also frees the device marks of this trial, so the device can be used for a trial again."));
-  return h("div", { class: "card acc " + (x.admin ? "admin" : x.approved ? "approved" : "waiting"), "data-email": who },
+  return h("div", { class: "card acc " + (x.admin ? "admin" : x.approved && x.paused ? "paused" : x.approved ? "approved" : "waiting"), "data-email": who },
     h("div", { class: "email" }, who, x.id === me ? h("span", { class: "muted small" }, " (this admin page)") : null),
     h("div", { class: "pills" }, status, x.admin || x.approved ? null : h("span", { class: "pill " + tr.cls }, tr.label)),   // approved: the trial no longer matters
     h("dl", null,
       h("dt", null, "Account created"), h("dd", null, fmtDT(x.t)),
       x.admin || x.approved ? null : [h("dt", null, "Free trial"), h("dd", null, tr.detail || "Not started")],
       x.admin || !x.approved ? null : [h("dt", null, "Plan"), h("dd", { class: "planval" }, planLabel(x))],
+      x.paused && x.approved && !x.admin ? [h("dt", null, "Access"), h("dd", { class: "pausedval" }, "Paused" + (x.pausedAt ? " since " + fmtDT(x.pausedAt) : "") + ". Progress, plan and devices are kept.")] : null,
       h("dt", null, "Devices"), h("dd", null, x.admin ? "Not limited" : ids.length + " of " + lim + (own ? " (own limit)" : "") + (ids.length ? " (" + ids.map(i => (d.names || {})[i] || "device").join(", ") + ")" : "")),
       h("dt", null, "Last active"), h("dd", null, s && s.at ? fmtDT(s.at) + (s.name ? " · " + s.name : "") : "Not yet"),
       h("dt", null, "Terms agreed"), h("dd", null, x.terms && x.terms.at ? fmtDT(x.terms.at) + " (version " + x.terms.v + ")" : "Not yet (asked at the next login)")),
