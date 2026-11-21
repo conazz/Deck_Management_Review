@@ -61,6 +61,7 @@ button{font:inherit;cursor:pointer}
 dl{display:grid;grid-template-columns:max-content 1fr;gap:3px 12px;margin:0 0 10px;font-size:.9rem}
 dt{color:var(--muted)}dd{margin:0;word-break:break-word}
 .warnline{color:var(--red);font-weight:600;font-size:.9rem;margin:0 0 8px}
+.noteline{color:var(--muted);font-size:.88rem;margin:0 0 8px}
 .acts{display:flex;gap:8px;flex-wrap:wrap}
 .acts .btn{min-height:38px;padding:6px 12px;font-size:.92rem}
 .legend{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
@@ -80,7 +81,7 @@ ol{padding-left:20px;margin:6px 0}
 <script>
 "use strict";
 const FB = {"apiKey": "AIzaSyBhLM8KRG4dXRWp7MMa4T49BU3-X-G1vw8", "authDomain": "deck-reviewer-c6083.firebaseapp.com", "projectId": "deck-reviewer-c6083", "storageBucket": "deck-reviewer-c6083.firebasestorage.app", "messagingSenderId": "385286445064", "appId": "1:385286445064:web:be38e62aef158ab27499bd"};                                  // the same Firebase config as the app (stamped by build.py)
-const BUILD_ID = "40d15cea5758";
+const BUILD_ID = "8d5bc5a7cd54";
 const FBV = "10.12.2";
 const TRIAL_MS = 3 * 3600 * 1000;                           // the free trial lasts 3 hours (the same in the app and in the Firestore rules)
 const ADMIN_EMAIL = "deck-admin@" + ((FB && FB.authDomain) || "deck-review.app");   // the admin page's own login: only the password is typed (never written here)
@@ -226,8 +227,8 @@ async function viewDash() {
   const count = h("p", { class: "count", role: "status" }), list = h("div", { id: "list" });
   const draw = () => {
     const now = ST.off + performance.now(), all = ST.data.users.slice(), q = ST.q.trim().toLowerCase();
-    const filt = { all: () => true, waiting: x => !x.approved, approved: x => x.approved, running: x => !x.approved && trialOf(x, now).key === "running", used: x => !x.approved && ["used", "blocked"].includes(trialOf(x, now).key), sharing: x => (x.alerts || []).length };
-    chips.replaceChildren(...[["all", "All"], ["waiting", "Waiting"], ["approved", "Approved"], ["running", "Trial running"], ["used", "Trial used"], ["sharing", "Possible sharing"]].map(([k, l]) =>
+    const filt = { all: () => true, waiting: x => !x.approved, approved: x => x.approved, running: x => !x.approved && trialOf(x, now).key === "running", used: x => !x.approved && ["used", "blocked"].includes(trialOf(x, now).key), sharing: x => (x.alerts || []).length, locked: x => lockDirect(x).length };
+    chips.replaceChildren(...[["all", "All"], ["waiting", "Waiting"], ["approved", "Approved"], ["running", "Trial running"], ["used", "Trial used"], ["sharing", "Possible sharing"], ["locked", "Opened locked function"]].map(([k, l]) =>
       h("button", { class: "chip" + (ST.f === k ? " on" : ""), type: "button", "aria-pressed": String(ST.f === k), onclick: () => { ST.f = k; draw(); } }, l + " (" + all.filter(filt[k]).length + ")")));
     const shown = all.filter(filt[ST.f]).filter(x => !q || (x.email || x.id).toLowerCase().includes(q))
       .sort((a, b) => (!!a.approved - !!b.approved) || (b.t || 0) - (a.t || 0));
@@ -242,10 +243,36 @@ async function viewDash() {
     cloud.viaApp ? h("p", { class: "small muted", style: "margin:-6px 0 12px" }, "Opened with your reviewer account " + (cloud.user.email || "") + " (admin).") : null,
     ST.noVault ? h("p", { class: "warnline" }, "The access code is not saved yet: open the reviewer once with your own admin account and type it (one-time setup). Until then nobody can open the reviewer or the free trial.") : null,
     h("div", { class: "stats" }, stat(u.length, "accounts"), stat(u.filter(x => !x.approved).length, "waiting"), stat(u.filter(x => x.approved).length, "approved"),
-      stat(u.filter(x => !x.approved && trialOf(x, now).key === "running").length, "trials running"), stat(u.filter(x => (x.alerts || []).length).length, "possible sharing")),
+      stat(u.filter(x => !x.approved && trialOf(x, now).key === "running").length, "trials running"), stat(u.filter(x => (x.alerts || []).length).length, "possible sharing"), stat(u.filter(x => lockDirect(x).length).length, "opened a locked function")),
     h("div", { class: "legend", "aria-label": "Colours" }, h("span", { class: "pill green" }, "Trial not used"), h("span", { class: "pill amber" }, "Trial running"), h("span", { class: "pill red" }, "Trial used")),
     h("div", { class: "search" }, search, chips), count, list);
   draw();
+}
+/* plans by function (Con, 21 Nov 2026): users/{id}.plan = ["F1","F3"]; no plan = full (every account made before this). Prices are Con's: edit PRICE. */
+const plural = (n, w) => n + " " + w + (n === 1 ? "" : "s");
+const peso = n => "₱" + String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+const FN = { F1: "Function 1", F2: "Function 2", F3: "Function 3" }, FUNCS = ["F1", "F2", "F3"], PRICE = { 1: 500, 2: 700, 3: 1000 };
+const planList = x => { const f = Array.isArray(x.plan) ? FUNCS.filter(g => x.plan.includes(g)) : []; return f.length && f.length < 3 ? f : null; };   // null = full
+const planLabel = x => { const f = planList(x); return f ? f.map(g => FN[g]).join(" + ") + " only (" + peso(PRICE[f.length]) + " plan, no Assorted)" : "Full: all 3 functions + Assorted (" + peso(PRICE[3]) + ")"; };
+const lockDirect = x => (x.lockLog || []).filter(l => l.k === "direct");
+const lockTaps = x => (x.lockLog || []).filter(l => l.k !== "direct");
+function planSheet(x, approving) {                         // choose the functions; 3 = full plan, 2 = ₱700, 1 = ₱500
+  const who = x.email || x.id, sel = new Set(planList(x) || FUNCS), info = h("p", { class: "small", style: "margin:8px 0", role: "status" }), row = h("div", { class: "chips", role: "group", "aria-label": "Functions" });
+  const draw = () => {
+    row.replaceChildren(...FUNCS.map(g => h("button", { class: "chip" + (sel.has(g) ? " on" : ""), type: "button", "aria-pressed": String(sel.has(g)), onclick: () => { sel.has(g) ? sel.delete(g) : sel.add(g); draw(); } }, FN[g])));
+    const n = sel.size;
+    info.textContent = n === 0 ? "Pick at least one function." : n === 3 ? "Full plan · " + peso(PRICE[3]) + ". Includes the Assorted (surprise) questions." : plural(n, "function") + " · " + peso(PRICE[n]) + ". No Assorted questions (they come only with the full plan).";
+  };
+  draw();
+  const save = async close => {
+    if (!sel.size) return; close();
+    const f = FUNCS.filter(g => sel.has(g)), data = { plan: f.length === 3 ? cloud.api.gone() : f };
+    if (approving) data.approved = true;
+    try { await cloud.api.set("users/" + x.id, data, true); } catch (e) { sheet("Could not do that", h("p", null, errText(e)), c => [h("button", { class: "btn", type: "button", onclick: c }, "OK")]); }
+    viewDash();
+  };
+  sheet(approving ? "Approve " + who : "Plan for " + who, [h("p", { class: "small muted", style: "margin:0 0 6px" }, "Pick the functions this account paid for. Function 1 = C1 to C11, Function 2 = C12 to C14, Function 3 = C15 to C20. A change applies on their phone within seconds."), row, info],
+    close => [h("button", { class: "btn", type: "button", onclick: () => save(close) }, approving ? "Approve with this plan" : "Save plan"), h("button", { class: "btn alt", type: "button", onclick: close }, "Cancel")]);
 }
 function limitSheet(x) {                                   // this account's own device limit (or the general one)
   let n = +x.devices >= 1 ? +x.devices : ST.slots;
@@ -265,10 +292,12 @@ function card(x, now) {
   const act = (label, cls, fn, ask) => h("button", { class: "btn " + cls, type: "button", onclick: async () => { if (ask && !(await confirmBox(label, ask, label))) return; try { await fn(); } catch (e) { sheet("Could not do that", h("p", null, errText(e)), c => [h("button", { class: "btn", type: "button", onclick: c }, "OK")]); } viewDash(); } }, label);
   const who = x.email || x.id;
   const acts = x.id === me ? [] : !x.approved
-    ? [act("Approve", "", () => cloud.api.set("users/" + x.id, { approved: true }, true)),
+    ? [h("button", { class: "btn", type: "button", onclick: () => planSheet(x, true) }, "Approve"),
        act("Delete request", "alt", () => cloud.api.del("users/" + x.id), "Delete the request from " + who + "? They can sign up again later.")]
     : [act("Reset devices", "alt", () => cloud.api.set("devices/" + x.id, { ids: [], names: {}, reset: "r" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), t: Date.now() }), "Reset the devices of " + who + "? Every device using this account is logged out now and must log in again; each new login takes a slot (up to " + ST.slots + ")."),
        (x.alerts || []).length ? act("Dismiss warning", "alt", () => cloud.api.set("users/" + x.id, { alerts: [] }, true)) : null,
+       x.admin ? null : h("button", { class: "btn alt", type: "button", onclick: () => planSheet(x, false) }, "Change plan"),
+       (x.lockLog || []).length ? act("Dismiss lock notes", "alt", () => cloud.api.set("users/" + x.id, { lockLog: [] }, true)) : null,
        x.admin ? null : h("button", { class: "btn alt", type: "button", onclick: () => limitSheet(x) }, "Device limit"),
        x.admin ? (x.email === ADMIN_EMAIL ? null : act("Remove admin", "warn", () => cloud.api.set("users/" + x.id, { admin: false }, true), "Remove admin rights from " + who + "? The account stays approved and keeps studying."))
          : act("Make admin", "alt", () => cloud.api.set("users/" + x.id, { admin: true }, true), "Make " + who + " an admin? It can open this page from the reviewer's Settings without a password, gets a notice whenever someone signs up, and is not limited to a number of devices."),
@@ -283,10 +312,13 @@ function card(x, now) {
     h("dl", null,
       h("dt", null, "Account created"), h("dd", null, fmtDT(x.t)),
       x.admin || x.approved ? null : [h("dt", null, "Free trial"), h("dd", null, tr.detail || "Not started")],
+      x.admin || !x.approved ? null : [h("dt", null, "Plan"), h("dd", { class: "planval" }, planLabel(x))],
       h("dt", null, "Devices"), h("dd", null, x.admin ? "Not limited" : ids.length + " of " + lim + (own ? " (own limit)" : "") + (ids.length ? " (" + ids.map(i => (d.names || {})[i] || "device").join(", ") + ")" : "")),
       h("dt", null, "Last active"), h("dd", null, s && s.at ? fmtDT(s.at) + (s.name ? " · " + s.name : "") : "Not yet"),
       h("dt", null, "Terms agreed"), h("dd", null, x.terms && x.terms.at ? fmtDT(x.terms.at) + " (version " + x.terms.v + ")" : "Not yet (asked at the next login)")),
     (x.alerts || []).length ? h("p", { class: "warnline" }, "⚠ Possible sharing: " + x.alerts.slice(-3).reverse().map(a => "kept studying on " + a.dev + " for " + dur(a.to - a.from) + " after the account moved to " + a.other + " (" + fmtDT(a.from) + ")").join("; ") + ".") : null,
+    lockDirect(x).length ? h("p", { class: "warnline" }, "⚠ Opened a locked function: " + lockDirect(x).slice(-3).reverse().map(l => l.g + " " + l.c + " (" + fmtDT(l.t) + (l.dev ? " · " + l.dev : "") + ")").join("; ") + (lockDirect(x).length > 3 ? " and " + (lockDirect(x).length - 3) + " earlier" : "") + ". Reached by a link or an old screen, not by tapping a padlock.") : null,
+    lockTaps(x).length ? h("p", { class: "noteline" }, "Tapped a padlock (maybe wants to upgrade): " + [...new Set(lockTaps(x).map(l => l.g))].sort().join(", ") + " · " + plural(lockTaps(x).length, "time") + ", last " + fmtDT(lockTaps(x).slice(-1)[0].t) + ".") : null,
     h("div", { class: "acts" }, acts));
 }
 
