@@ -69,7 +69,8 @@ dt{color:var(--muted)}dd{margin:0;word-break:break-word}
 .legend{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center;z-index:10}
 .sheet{background:var(--paper);border:1px solid var(--line);border-radius:16px 16px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));width:100%;max-width:560px}
-.sheet .acts{margin-top:12px}
+.sheet{max-height:92vh;max-height:92dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}   /* a tall sheet (Progress) scrolls inside itself (Con, 22 Nov 2026) */
+.sheet .acts{margin-top:12px;position:sticky;bottom:0;background:var(--paper);padding:8px 0 2px}              /* the buttons stay in view while the content scrolls */
 code{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:.9em;word-break:break-all}
 ol{padding-left:20px;margin:6px 0}
 .slotsrow{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.slotsrow>div:first-child{flex:1;min-width:140px}
