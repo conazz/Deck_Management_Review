@@ -62,6 +62,8 @@ dl{display:grid;grid-template-columns:max-content 1fr;gap:3px 12px;margin:0 0 10
 dt{color:var(--muted)}dd{margin:0;word-break:break-word}
 .warnline{color:var(--red);font-weight:600;font-size:.9rem;margin:0 0 8px}
 .noteline{color:var(--muted);font-size:.88rem;margin:0 0 8px}
+.codebox{font:12px/1.45 ui-monospace,Menlo,Consolas,monospace;background:var(--grey-bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin:6px 0 10px;white-space:pre-wrap;overflow-x:auto}
+.bar{height:7px;border-radius:4px;background:var(--grey-bg);margin:2px 0 8px;overflow:hidden}.bar i{display:block;height:100%;background:var(--green)}
 .acts{display:flex;gap:8px;flex-wrap:wrap}
 .acts .btn{min-height:38px;padding:6px 12px;font-size:.92rem}
 .legend{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
@@ -81,7 +83,9 @@ ol{padding-left:20px;margin:6px 0}
 <script>
 "use strict";
 const FB = {"apiKey": "AIzaSyBhLM8KRG4dXRWp7MMa4T49BU3-X-G1vw8", "authDomain": "deck-reviewer-c6083.firebaseapp.com", "projectId": "deck-reviewer-c6083", "storageBucket": "deck-reviewer-c6083.firebasestorage.app", "messagingSenderId": "385286445064", "appId": "1:385286445064:web:be38e62aef158ab27499bd"};                                  // the same Firebase config as the app (stamped by build.py)
-const BUILD_ID = "7f1ac8e28655";
+const BUILD_ID = "a5698f4b29aa";
+const EXAM_TABLE = [[25, "C1", "Plan a voyage and conduct navigation", "F1", 327], [48, "C2", "Determine position and the accuracy of resultant position fix by any means", "F1", 450], [27, "C3", "Determine and allow for compass errors", "F1", 231], [28, "C4", "Coordinate search and rescue operations", "F1", 233], [29, "C5", "Establish watchkeeping arrangements and procedures", "F1", 287], [30, "C6", "Maintain safety of navigation through the use of information from navigation equipment and systems to assist command decision making", "F1", 288], [49, "C8", "Forecast weather and oceanographic conditions", "F1", 443], [20, "C9", "Respond to navigational emergencies", "F1", 235], [31, "C10", "Manoeuvre and handle a ship in all conditions", "F1", 444], [22, "C11", "Operate remote controls of propulsion plant and engineering systems and services", "F1", 479], [41, "C12", "Plan and ensure safe loading, stowage, securing, care during the voyage and the unloading of cargoes", "F2", 704], [40, "C13", "Assess reported defects and damage to cargo spaces, hatch covers and ballast tanks and take appropriate action", "F2", 379], [42, "C14", "Carriage of dangerous goods", "F2", 406], [43, "C15", "Control trim, stability and stress", "F3", 352], [44, "C16", "Monitor and control compliance with legislative requirements and measures to ensure safety of life at sea, security and protection of the marine environment", "F3", 534], [45, "C17", "Maintain safety and security of the ship's crew and passengers and the operational condition of life-saving, firefighting and other safety systems", "F3", 288], [46, "C18", "Develop emergency and damaged control plans and handle emergency situations", "F3", 204], [47, "C20", "Organize and manage the provision of medical care on board", "F3", 278], [23, "Assorted", "Surprise Questions Assorted", "A", 58]];                            // [id, code, name, group, questions] for every competence (put in by build.py): the progress view
+
 const FBV = "10.12.2";
 const TRIAL_MS = 3 * 3600 * 1000;                           // the free trial lasts 3 hours (the same in the app and in the Firestore rules)
 const ADMIN_EMAIL = "deck-admin@" + ((FB && FB.authDomain) || "deck-review.app");   // the admin page's own login: only the password is typed (never written here)
@@ -94,7 +98,9 @@ function h(tag, attrs, ...kids) {
   return e;
 }
 const show = (...n) => app.replaceChildren(...n.flat(Infinity).filter(Boolean));
-const fmtDT = ms => ms ? new Date(ms).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "unknown";
+const TZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (e) { return ""; } })();   // this device's time zone, e.g. Asia/Manila
+const fmtDT = ms => ms ? new Date(ms).toLocaleString([], { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }) : "unknown";   // every time shows its time zone (Con, 22 Nov 2026)
+const tzNow = () => { try { const p = new Intl.DateTimeFormat([], { timeZoneName: "long" }).formatToParts(new Date()).find(x => x.type === "timeZoneName"); return (TZ ? TZ + " · " : "") + (p ? p.value : ""); } catch (e) { return TZ; } };
 const left = ms => { const m = Math.ceil(ms / 60000); return m <= 1 ? "less than a minute" : m < 60 ? m + " min" : Math.floor(m / 60) + " h " + (m % 60) + " min"; };
 const dur = ms => { const m = Math.round(ms / 60000); return m < 60 ? Math.max(1, m) + " min" : m < 2880 ? Math.round(m / 60) + " h" : Math.round(m / 1440) + " days"; };
 function sheet(title, body, buttons) {
@@ -241,6 +247,7 @@ async function viewDash() {
   show(h("div", { class: "top" }, h("div", null, h("h1", null, "Deck Review · Admin"), h("p", { class: "sub" }, "Accounts, approvals, free trials and devices")),
       h("div", { class: "btns" }, h("button", { class: "btn alt", type: "button", onclick: viewDash }, "Refresh"), h("button", { class: "btn alt", type: "button", onclick: logOut }, cloud.viaApp ? "Back to the reviewer" : "Log out"))),
     cloud.viaApp ? h("p", { class: "small muted", style: "margin:-6px 0 12px" }, "Opened with your reviewer account " + (cloud.user.email || "") + " (admin).") : null,
+    h("p", { class: "small muted", style: "margin:-6px 0 12px", id: "tznote" }, "All times on this page are shown in this device's time zone: " + tzNow() + "."),
     ST.noVault ? h("p", { class: "warnline" }, "The access code is not saved yet: open the reviewer once with your own admin account and type it (one-time setup). Until then nobody can open the reviewer or the free trial.") : null,
     h("div", { class: "stats" }, stat(u.length, "accounts"), stat(u.filter(x => !x.approved).length, "waiting"), stat(u.filter(x => x.approved).length, "approved"),
       stat(u.filter(x => !x.approved && trialOf(x, now).key === "running").length, "trials running"), stat(u.filter(x => (x.alerts || []).length).length, "possible sharing"), stat(u.filter(x => lockDirect(x).length).length, "opened a locked function"), stat(u.filter(x => x.approved && !x.admin && x.paused).length, "paused")),
@@ -257,22 +264,49 @@ const planLabel = x => { const f = planList(x); return f ? f.map(g => FN[g]).joi
 const lockDirect = x => (x.lockLog || []).filter(l => l.k === "direct");
 const lockTaps = x => (x.lockLog || []).filter(l => l.k !== "direct");
 function planSheet(x, approving) {                         // choose the functions; 3 = full plan, 2 = ₱700, 1 = ₱500
-  const who = x.email || x.id, sel = new Set(planList(x) || FUNCS), info = h("p", { class: "small", style: "margin:8px 0", role: "status" }), row = h("div", { class: "chips", role: "group", "aria-label": "Functions" });
+  let dev = 2;                                               // new accounts start with 2 devices (Con, 22 Nov 2026); only when approving, never when changing an existing account
+  const who = x.email || x.id, sel = new Set(planList(x) || FUNCS), devRow = h("div", { class: "chips", role: "group", "aria-label": "Devices" }), info = h("p", { class: "small", style: "margin:8px 0", role: "status" }), row = h("div", { class: "chips", role: "group", "aria-label": "Functions" });
   const draw = () => {
     row.replaceChildren(...FUNCS.map(g => h("button", { class: "chip" + (sel.has(g) ? " on" : ""), type: "button", "aria-pressed": String(sel.has(g)), onclick: () => { sel.has(g) ? sel.delete(g) : sel.add(g); draw(); } }, FN[g])));
     const n = sel.size;
     info.textContent = n === 0 ? "Pick at least one function." : n === 3 ? "Full plan · " + peso(PRICE[3]) + ". Includes the Assorted (surprise) questions." : plural(n, "function") + " · " + peso(PRICE[n]) + ". No Assorted questions (they come only with the full plan).";
   };
-  draw();
+  const drawD = () => devRow.replaceChildren(...[1, 2, 3].map(n => h("button", { class: "chip" + (dev === n ? " on" : ""), type: "button", "aria-pressed": String(dev === n), onclick: () => { dev = n; drawD(); } }, n === 1 ? "1 device" : n + " devices")));
+  draw(); drawD();
   const save = async close => {
     if (!sel.size) return; close();
     const f = FUNCS.filter(g => sel.has(g)), data = { plan: f.length === 3 ? cloud.api.gone() : f };
-    if (approving) data.approved = true;
+    if (approving) { data.approved = true; if (dev > 1) data.devices = dev; }                // 1 device is the usual (no field); 2 or 3 is this account's own limit
     try { await cloud.api.set("users/" + x.id, data, true); } catch (e) { sheet("Could not do that", h("p", null, errText(e)), c => [h("button", { class: "btn", type: "button", onclick: c }, "OK")]); }
     viewDash();
   };
-  sheet(approving ? "Approve " + who : "Plan for " + who, [h("p", { class: "small muted", style: "margin:0 0 6px" }, "Pick the functions this account paid for. Function 1 = C1 to C11, Function 2 = C12 to C14, Function 3 = C15 to C20. A change applies on their phone within seconds."), row, info],
+  sheet(approving ? "Approve " + who : "Plan for " + who, [h("p", { class: "small muted", style: "margin:0 0 6px" }, "Pick the functions this account paid for. Function 1 = C1 to C11, Function 2 = C12 to C14, Function 3 = C15 to C20. A change applies on their phone within seconds."), row, info].concat(approving ? [h("p", { class: "small muted", style: "margin:12px 0 4px" }, "Devices this account may use (new accounts start with 2; you can change it later with Device limit):"), devRow] : []),
     close => [h("button", { class: "btn", type: "button", onclick: () => save(close) }, approving ? "Approve with this plan" : "Save plan"), h("button", { class: "btn alt", type: "button", onclick: close }, "Cancel")]);
+}
+const RULE_FIX = "match /progress/{uid} {\n  allow read: if (approved() && request.auth.uid == uid) || isAdmin();\n  allow write: if approved() && request.auth.uid == uid;\n}";
+async function progressSheet(x) {                          // what this account has studied (read from their saved progress; the admin must be allowed to read it, see RULE_FIX)
+  const who = x.email || x.id, done = body => sheet("Progress of " + who, body, c => [h("button", { class: "btn", type: "button", onclick: c }, "Close")]);
+  let doc = null;
+  try { doc = await cloud.api.get("progress/" + x.id); }
+  catch (e) { return done([/permission/i.test((e && (e.code || e.message)) || "") ? [h("p", { class: "err" }, "The database rules do not let the admin read other accounts' progress yet."), h("p", { class: "small" }, "In Firebase, open Firestore Database, then Rules. Replace the block that starts with match /progress/{uid} by this one, and Publish:"), h("pre", { class: "codebox" }, RULE_FIX)] : h("p", { class: "err" }, "Could not load it. " + errText(e))]); }
+  if (!doc || !doc.d) return done(h("p", null, "No progress saved yet. They have not studied while logged in, or their phone has not synced (it saves about once a minute while they study, and when they leave the app)."));
+  let d = null; try { d = JSON.parse(doc.d); } catch (e) {}
+  if (!d || !d.user) return done(h("p", { class: "err" }, "Their saved progress could not be read."));
+  const u = d.user, plan = planList(x), n = o => Object.keys(o || {}).length;
+  const rows = EXAM_TABLE.filter(r => r[3] === "A" ? !plan : !plan || plan.includes(r[3]));   // only what their plan can reach
+  const seenOf = r => n((u.seen || {})[r[0]]), total = rows.reduce((s, r) => s + r[4], 0), seen = rows.reduce((s, r) => s + seenOf(r), 0);
+  let right = 0, wrong = 0; for (const k in u.tally || {}) { right += (u.tally[k] || {}).c || 0; wrong += (u.tally[k] || {}).w || 0; }
+  const pct = (a, b) => b ? Math.round(a / b * 100) + "%" : "0%", L = d.lastExam;
+  const line = (k, v) => [h("dt", null, k), h("dd", null, v)];
+  const groups = [["F1", FN.F1], ["F2", FN.F2], ["F3", FN.F3], ["A", "Assorted"]].filter(g => rows.some(r => r[3] === g[0]));
+  done([
+    h("dl", null, line("Last saved", fmtDT(doc.at)), line("Questions seen", seen.toLocaleString() + " of " + total.toLocaleString() + " (" + pct(seen, total) + ")"),
+      line("Answers in Practice and Intense", right + wrong ? right.toLocaleString() + " right, " + wrong.toLocaleString() + " wrong (" + pct(right, right + wrong) + " right)" : "none yet"),
+      line("Mastered / Favorites / Notes", n(u.mast) + " / " + n(u.star) + " / " + n(u.notes)), line("Incorrect tags", String(Object.values(u.wrong || {}).filter(w => w && w.on).length)),
+      line("Last mock exam", L ? L.score + " of " + L.total + " (" + pct(L.score, L.total) + ") · " + (L.hard ? "Hard" : "Easy") + " mode · " + (L.pass ? "PASS" : "FAIL") + " · " + fmtDT(L.at) : "none yet"),
+      line("Unfinished runs", String(n(d.sess)) + (d.exam && !d.exam.done ? " and a mock exam in progress" : ""))),
+    groups.map(g => [h("h3", { style: "margin:12px 0 4px;font-size:1rem" }, g[1]), rows.filter(r => r[3] === g[0]).map(r => { const s = seenOf(r); return [h("div", { class: "small" }, h("b", null, r[1] + " "), s + " of " + r[4] + " (" + pct(s, r[4]) + ")"), h("div", { class: "bar" }, h("i", { style: "width:" + (r[4] ? Math.min(100, s / r[4] * 100) : 0) + "%" }))]; })]),
+    h("p", { class: "small muted", style: "margin:10px 0 0" }, "Read from the account's saved progress. The count of questions seen is out of the full bank for their plan.")]);
 }
 function limitSheet(x) {                                   // this account's own device limit (or the general one)
   let n = +x.devices >= 1 ? +x.devices : ST.slots;
@@ -296,6 +330,7 @@ function card(x, now) {
        act("Delete request", "alt", () => cloud.api.del("users/" + x.id), "Delete the request from " + who + "? They can sign up again later.")]
     : [act("Reset devices", "alt", () => cloud.api.set("devices/" + x.id, { ids: [], names: {}, reset: "r" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), t: Date.now() }), "Reset the devices of " + who + "? Every device using this account is logged out now and must log in again; each new login takes a slot (up to " + ST.slots + ")."),
        (x.alerts || []).length ? act("Dismiss warning", "alt", () => cloud.api.set("users/" + x.id, { alerts: [] }, true)) : null,
+       x.admin ? null : h("button", { class: "btn alt", type: "button", onclick: () => progressSheet(x) }, "Progress"),
        x.admin ? null : h("button", { class: "btn alt", type: "button", onclick: () => planSheet(x, false) }, "Change plan"),
        (x.lockLog || []).length ? act("Dismiss lock notes", "alt", () => cloud.api.set("users/" + x.id, { lockLog: [] }, true)) : null,
        x.admin ? null : h("button", { class: "btn alt", type: "button", onclick: () => limitSheet(x) }, "Device limit"),
