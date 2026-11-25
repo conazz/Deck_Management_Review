@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700&family=Source+Sans+3:wght@400;600;700&display=swap">
 <style>
-/* Deck Review admin page (Con, 30 Oct 2026): approve and manage accounts. Colours: edit here. */
+/* Deck Review admin page (the owner, 30 Oct 2026): approve and manage accounts. Colours: edit here. */
 :root{
   --bg:#0A1B24;--paper:#10262F;--ink:#E3EEF2;--muted:#8FA9B5;--line:#24414E;--sea:#5FB2D1;
   --green:#3DDC84;--green-bg:#123526;--amber:#FFC44D;--amber-bg:#3A2F12;--red:#EF6B71;--red-bg:#3A1A1D;--grey:#8FA9B5;--grey-bg:#1A313B;--blue:#5FB2D1;--blue-bg:#12303D;
@@ -69,7 +69,7 @@ dt{color:var(--muted)}dd{margin:0;word-break:break-word}
 .legend{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center;z-index:10}
 .sheet{background:var(--paper);border:1px solid var(--line);border-radius:16px 16px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));width:100%;max-width:560px}
-.sheet{max-height:92vh;max-height:92dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}   /* a tall sheet (Progress) scrolls inside itself (Con, 22 Nov 2026) */
+.sheet{max-height:92vh;max-height:92dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}   /* a tall sheet (Progress) scrolls inside itself (the owner, 22 Nov 2026) */
 .sheet .acts{margin-top:12px;position:sticky;bottom:0;background:var(--paper);padding:8px 0 2px}              /* the buttons stay in view while the content scrolls */
 code{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:.9em;word-break:break-all}
 ol{padding-left:20px;margin:6px 0}
@@ -84,7 +84,7 @@ ol{padding-left:20px;margin:6px 0}
 <script>
 "use strict";
 const FB = {"apiKey": "AIzaSyBhLM8KRG4dXRWp7MMa4T49BU3-X-G1vw8", "authDomain": "deck-reviewer-c6083.firebaseapp.com", "projectId": "deck-reviewer-c6083", "storageBucket": "deck-reviewer-c6083.firebasestorage.app", "messagingSenderId": "385286445064", "appId": "1:385286445064:web:be38e62aef158ab27499bd"};                                  // the same Firebase config as the app (stamped by build.py)
-const BUILD_ID = "466e33a5dcce";
+const BUILD_ID = "104f6d11d0d3";
 const EXAM_TABLE = [[25, "C1", "Plan a voyage and conduct navigation", "F1", 327], [48, "C2", "Determine position and the accuracy of resultant position fix by any means", "F1", 450], [27, "C3", "Determine and allow for compass errors", "F1", 231], [28, "C4", "Coordinate search and rescue operations", "F1", 233], [29, "C5", "Establish watchkeeping arrangements and procedures", "F1", 287], [50, "C6", "Maintain safety of navigation through the use of information from navigation equipment and systems to assist command decision making", "F1", 374], [49, "C8", "Forecast weather and oceanographic conditions", "F1", 443], [20, "C9", "Respond to navigational emergencies", "F1", 235], [31, "C10", "Manoeuvre and handle a ship in all conditions", "F1", 444], [22, "C11", "Operate remote controls of propulsion plant and engineering systems and services", "F1", 479], [41, "C12", "Plan and ensure safe loading, stowage, securing, care during the voyage and the unloading of cargoes", "F2", 704], [40, "C13", "Assess reported defects and damage to cargo spaces, hatch covers and ballast tanks and take appropriate action", "F2", 379], [42, "C14", "Carriage of dangerous goods", "F2", 406], [43, "C15", "Control trim, stability and stress", "F3", 352], [44, "C16", "Monitor and control compliance with legislative requirements and measures to ensure safety of life at sea, security and protection of the marine environment", "F3", 534], [45, "C17", "Maintain safety and security of the ship's crew and passengers and the operational condition of life-saving, firefighting and other safety systems", "F3", 288], [46, "C18", "Develop emergency and damaged control plans and handle emergency situations", "F3", 204], [47, "C20", "Organize and manage the provision of medical care on board", "F3", 278], [23, "Assorted", "Surprise Questions Assorted", "A", 58]];                            // [id, code, name, group, questions] for every competence (put in by build.py): the progress view
 
 const FBV = "10.12.2";
@@ -100,7 +100,7 @@ function h(tag, attrs, ...kids) {
 }
 const show = (...n) => app.replaceChildren(...n.flat(Infinity).filter(Boolean));
 const TZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (e) { return ""; } })();   // this device's time zone, e.g. Asia/Manila
-const fmtDT = ms => ms ? new Date(ms).toLocaleString([], { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }) : "unknown";   // every time shows its time zone (Con, 22 Nov 2026)
+const fmtDT = ms => ms ? new Date(ms).toLocaleString([], { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }) : "unknown";   // every time shows its time zone (the owner, 22 Nov 2026)
 const tzNow = () => { try { const p = new Intl.DateTimeFormat([], { timeZoneName: "long" }).formatToParts(new Date()).find(x => x.type === "timeZoneName"); return (TZ ? TZ + " · " : "") + (p ? p.value : ""); } catch (e) { return TZ; } };
 const left = ms => { const m = Math.ceil(ms / 60000); return m <= 1 ? "less than a minute" : m < 60 ? m + " min" : Math.floor(m / 60) + " h " + (m % 60) + " min"; };
 const dur = ms => { const m = Math.round(ms / 60000); return m < 60 ? Math.max(1, m) + " min" : m < 2880 ? Math.round(m / 60) + " h" : Math.round(m / 1440) + " days"; };
@@ -143,7 +143,7 @@ async function fbAdapter(name) {                             // name: a separate
 const cloud = { api: null, user: null, viaApp: false };
 async function cloudInit() {
   if (cloud.api) return cloud.user;
-  try {                                                     // 1) an admin account already logged in to the reviewer in this browser (e.g. Con's main account): straight in, no password
+  try {                                                     // 1) an admin account already logged in to the reviewer in this browser (e.g. the owner's main account): straight in, no password
     const main = window.__FB_MOCK || await fbAdapter(), mu = await main.init(FB);
     if (mu) { const p = await main.get("users/" + mu.uid); if (p && p.admin) { cloud.api = main; cloud.user = mu; cloud.viaApp = true; return mu; } }
   } catch (e) {}
@@ -256,7 +256,7 @@ async function viewDash() {
     h("div", { class: "search" }, search, chips), count, list);
   draw();
 }
-/* plans by function (Con, 21 Nov 2026): users/{id}.plan = ["F1","F3"]; no plan = full (every account made before this). Prices are Con's: edit PRICE. */
+/* plans by function (the owner, 21 Nov 2026): users/{id}.plan = ["F1","F3"]; no plan = full (every account made before this). Prices are the owner's: edit PRICE. */
 const plural = (n, w) => n + " " + w + (n === 1 ? "" : "s");
 const peso = n => "₱" + String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 const FN = { F1: "Function 1", F2: "Function 2", F3: "Function 3" }, FUNCS = ["F1", "F2", "F3"], PRICE = { 1: 500, 2: 700, 3: 1000 };
@@ -265,7 +265,7 @@ const planLabel = x => { const f = planList(x); return f ? f.map(g => FN[g]).joi
 const lockDirect = x => (x.lockLog || []).filter(l => l.k === "direct");
 const lockTaps = x => (x.lockLog || []).filter(l => l.k !== "direct");
 function planSheet(x, approving) {                         // choose the functions; 3 = full plan, 2 = ₱700, 1 = ₱500
-  let dev = 2;                                               // new accounts start with 2 devices (Con, 22 Nov 2026); only when approving, never when changing an existing account
+  let dev = 2;                                               // new accounts start with 2 devices (the owner, 22 Nov 2026); only when approving, never when changing an existing account
   const who = x.email || x.id, sel = new Set(planList(x) || FUNCS), devRow = h("div", { class: "chips", role: "group", "aria-label": "Devices" }), info = h("p", { class: "small", style: "margin:8px 0", role: "status" }), row = h("div", { class: "chips", role: "group", "aria-label": "Functions" });
   const draw = () => {
     row.replaceChildren(...FUNCS.map(g => h("button", { class: "chip" + (sel.has(g) ? " on" : ""), type: "button", "aria-pressed": String(sel.has(g)), onclick: () => { sel.has(g) ? sel.delete(g) : sel.add(g); draw(); } }, FN[g])));
