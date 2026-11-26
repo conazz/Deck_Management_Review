@@ -464,7 +464,7 @@ const TVAULT = {"v": 2, "it": 600000, "s": "yNebhp65k7IRsKtoMZ0tRQ==", "i": "qXz
 const FULL_TOTAL = 6706, TRIAL_PER = 50, FULL_COMP = 18;   // numbers put in by build.py: every question in the full reviewer, and the trial's questions per competence
 const FB = {"apiKey": "AIzaSyBhLM8KRG4dXRWp7MMa4T49BU3-X-G1vw8", "authDomain": "deck-reviewer-c6083.firebaseapp.com", "projectId": "deck-reviewer-c6083", "storageBucket": "deck-reviewer-c6083.firebasestorage.app", "messagingSenderId": "385286445064", "appId": "1:385286445064:web:be38e62aef158ab27499bd"};                          // Firebase web config stamped by build.py (null = the old shared-password lock)
 const PFX = "deckreviewer:";
-const BUILD_ID = "88e89ee288cd";                       // stamped by build.py; compared with version.json to detect a newer version
+const BUILD_ID = "7b1b68359f99";                       // stamped by build.py; compared with version.json to detect a newer version
 const LAST_UPDATED = "November 24, 2026";                 // stamped by build.py (--update-date)
 const NUM_RE = /^\s*(\d+)\s*[.)](?!\d)\s*/;          // same rule as build.py (display only)
 const ITEMS_BY_CODE = { C1: 10, C2: 10, C3: 10, C4: 10, C5: 10, C6: 10, C8: 10, C9: 10, C10: 20, C11: 10, C12: 15, C13: 10, C14: 10, C15: 15, C16: 10, C17: 10, C18: 10, C20: 10 };
@@ -1419,10 +1419,12 @@ function authErr(e) {
     "auth/weak-password": "Choose a password of at least 6 characters.", "auth/too-many-requests": "Too many tries. Wait a few minutes and try again.",
     "auth/network-request-failed": "No internet connection." })[c] || (e && e.message === "timeout" ? "No internet connection." : "Something went wrong" + (c ? " (" + c + ")" : "") + ". Try again.");
 }
-const devName = () => { const u = navigator.userAgent;
+const devName = () => { const u = navigator.userAgent;     // "system · browser", plus "(installed app)" for the home-screen app and "Facebook app" etc. for built-in browsers: they keep separate storage, so each counts as its own device (the owner, 26 Nov 2026: the name was the same for all of them)
   const os = /iPhone/.test(u) ? "iPhone" : /iPad/.test(u) ? "iPad" : /Android/.test(u) ? "Android" : /Windows/.test(u) ? "Windows" : /Mac/.test(u) ? "Mac" : /Linux/.test(u) ? "Linux" : "device";
-  const br = /Edg\//.test(u) ? "Edge" : /CriOS|Chrome\//.test(u) ? "Chrome" : /FxiOS|Firefox\//.test(u) ? "Firefox" : /Safari\//.test(u) ? "Safari" : "browser";
-  return os + " · " + br; };
+  const inApp = /FBAN|FBAV|FB_IAB|FBIOS/.test(u) ? "Facebook app" : /Instagram/.test(u) ? "Instagram app" : /Messenger/.test(u) ? "Messenger app" : null;
+  const br = inApp || (/Edg\//.test(u) ? "Edge" : /SamsungBrowser/.test(u) ? "Samsung Internet" : /OPR\/|Opera/.test(u) ? "Opera" : /CriOS|Chrome\//.test(u) ? "Chrome" : /FxiOS|Firefox\//.test(u) ? "Firefox" : /Safari\//.test(u) || /iPhone|iPad/.test(u) ? "Safari" : "browser");   // the iPhone home-screen app does not send "Safari" in its identity, but it is Safari underneath
+  let installed = false; try { installed = !inApp && ((window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true); } catch (e) {}
+  return os + " \u00b7 " + br + (installed ? " (installed app)" : ""); };
 function myDevId() { let d = store.get("devid"); if (!d) { d = unb64(crypto.getRandomValues(new Uint8Array(12))); store.set("devid", d); } return d; }
 function flash(msg) { try { sessionStorage.setItem("deckmsg", msg); } catch (e) {} }
 function takeFlash() { try { const m = sessionStorage.getItem("deckmsg"); sessionStorage.removeItem("deckmsg"); return m || ""; } catch (e) { return ""; } }
@@ -1489,6 +1491,13 @@ async function deviceSlots(u) {                            // -> { ids, names, i
   cloud.devs = ids.length;
   return { ids, names: (d && d.names) || {}, reset: (d && d.reset) || null, isNew: !ids.includes(mine), full: !(cloud.prof && cloud.prof.admin) && !ids.includes(mine) && ids.length >= DEVICE_SLOTS };
 }
+async function relabelDevice(u, slots) {                   // a device registered before 26 Nov 2026 has the plain old name: give it the clearer one at its next login (never back to a plainer one)
+  try {
+    const mine = myDevId(), cur = (slots.names || {})[mine], now = devName();
+    if (!cur || cur === now || !slots.ids.includes(mine) || /installed app|Facebook app|Instagram app|Messenger app|Samsung Internet|Opera/.test(cur)) return;
+    await cloud.api.set("devices/" + u.uid, { ids: slots.ids, names: Object.assign({}, slots.names, { [mine]: now }), t: Date.now() }, true);   // the list of ids goes with it, like when a device is registered (the rules never let it shrink)
+  } catch (e) {}
+}
 async function addDevice(u, slots) {
   const mine = myDevId(), ids = slots.ids.concat([mine]);
   await cloud.api.set("devices/" + u.uid, { ids, names: Object.assign({}, slots.names, { [mine]: devName() }), t: Date.now() }, true);   // merge: keeps the admin's reset mark
@@ -1517,7 +1526,7 @@ async function claimDevice(u, askFirst) {                 // device slots, then 
     const ok = await confirmSheet("This account is open on another device (" + (s.name || "unknown device") + ", last active " + when + "). Continue here? The other device will be logged out. Anything it has not saved yet is added to your account first.", "Continue here", "Cancel");
     if (!ok) { await logOutHere(true); return false; }
   }
-  if (slots && slots.isNew) { try { await addDevice(u, slots); } catch (e) {} }
+  if (slots && slots.isNew) { try { await addDevice(u, slots); } catch (e) {} } else if (slots) relabelDevice(u, slots);
   try { await cloud.api.set("sessions/" + u.uid, { dev: mine, name: devName(), at: Date.now(), since: Date.now() }); } catch (e) {}   // since = when this device took the account
   return true;
 }
@@ -1532,7 +1541,7 @@ async function accountCheck() {                            // background check a
     let slots = null; try { slots = await deviceSlots(u); } catch (e) {}
     if (slots && slots.reset && slots.isNew && !(p && p.admin)) return kicked(RESET_MSG);   // devices were reset: log in again   // devices that logged in before the device limit existed are registered now (if there is room)
     if (slots && slots.full) return lockOut("Device limit reached. This account is already registered on " + (DEVICE_SLOTS === 1 ? "another device" : DEVICE_SLOTS + " devices") + ". Only " + slotsTxt() + " is allowed per account.");
-    if (slots && slots.isNew) { try { await addDevice(u, slots); } catch (e) {} }
+    if (slots && slots.isNew) { try { await addDevice(u, slots); } catch (e) {} } else if (slots) relabelDevice(u, slots);
     if (!p.admin) planChanged(p);
     if (!!p.admin !== !!a.admin || a.devs !== cloud.devs) store.set("acct", Object.assign({}, store.get("acct") || a, { admin: !!p.admin, devs: cloud.devs }));
     if (!(await stillMine())) return kicked();
