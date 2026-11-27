@@ -209,7 +209,7 @@ async function logOut() {
 }
 
 /* ---- the accounts */
-const ST = { q: "", f: "all", data: null, off: 0, noVault: false, slots: 1 };
+const ST = { q: "", f: "all", sort: "default", data: null, off: 0, noVault: false, slots: 1, draw: null };   // sort: default (waiting first, newest), latest (latest active first), oldest (least recently active first)
 function trialOf(x, now) {                                  // -> { cls, label, detail }
   if (x.trialStart) {
     const end = x.trialStart + TRIAL_MS;
@@ -220,40 +220,57 @@ function trialOf(x, now) {                                  // -> { cls, label, 
   return { key: "none", cls: "green", label: "Trial not used", detail: "" };
 }
 async function load() {
-  const [users, devs, sess, trials, off] = await Promise.all([cloud.api.list("users"), cloud.api.list("devices").catch(() => []), cloud.api.list("sessions").catch(() => []), cloud.api.list("trials").catch(() => []), serverNow().catch(() => Date.now() - performance.now())]);
+  const [users, devs, sess, off] = await Promise.all([cloud.api.list("users"), cloud.api.list("devices").catch(() => []), cloud.api.list("sessions").catch(() => []), serverNow().catch(() => Date.now() - performance.now())]);   // the free-trial marks are read only when "Allow a new trial" is used (the owner, 27 Nov 2026: fewer database reads)
   const by = l => Object.fromEntries(l.map(d => [d.id, d]));
-  ST.data = { users, devs: by(devs), sess: by(sess), trials }; ST.off = off;
+  ST.data = { users, devs: by(devs), sess: by(sess) }; ST.off = off;
   ST.slots = 1;                                             // every account: 1 device, unless it has its own limit (Device limit on its card)
   try { const c = await cloud.api.get("config/app"); if (c && +c.devices !== 1) await cloud.api.set("config/app", { devices: 1, t: Date.now() }, true); } catch (e) {}   // keep the rules' general value at 1
+}
+async function refreshOne(id) {                            // after an action on one account: read just that account (3 reads), keep the rest of the list, scroll position and filters (the owner, 27 Nov 2026; before: the whole list was read again after every click)
+  if (!ST.data || !ST.draw) return viewDash();
+  try {
+    const [u, d, s] = await Promise.all([cloud.api.get("users/" + id), cloud.api.get("devices/" + id).catch(() => null), cloud.api.get("sessions/" + id).catch(() => null)]);
+    const i = ST.data.users.findIndex(x => x.id === id);
+    if (!u) { if (i >= 0) ST.data.users.splice(i, 1); delete ST.data.devs[id]; delete ST.data.sess[id]; }       // deleted (or gone)
+    else { const nu = Object.assign({ id }, u); if (i >= 0) ST.data.users[i] = nu; else ST.data.users.push(nu); if (d) ST.data.devs[id] = Object.assign({ id }, d); else delete ST.data.devs[id]; if (s) ST.data.sess[id] = Object.assign({ id }, s); else delete ST.data.sess[id]; }
+  } catch (e) { return viewDash(); }                          // anything unexpected: the full, fresh list
+  ST.draw();
 }
 async function viewDash() {
   show(h("p", { class: "muted" }, "Loading accounts…"));
   try { await load(); } catch (e) { return show(h("h1", null, "Deck Review · Admin"), h("div", { class: "card" }, h("p", { class: "err" }, "Could not load the accounts. " + errText(e)), h("button", { class: "btn", type: "button", onclick: viewDash }, "Try again"))); }
   const search = h("input", { type: "search", id: "q", placeholder: "Search accounts by email", "aria-label": "Search accounts", value: ST.q });
   const chips = h("div", { class: "chips", role: "group", "aria-label": "Filter" });
-  const count = h("p", { class: "count", role: "status" }), list = h("div", { id: "list" });
+  const count = h("p", { class: "count", role: "status" }), list = h("div", { id: "list" }), stats = h("div", { class: "stats" }), sortRow = h("div", { class: "chips", role: "group", "aria-label": "Sort" });
+  const stat = (n, label) => h("div", { class: "stat" }, h("b", null, String(n)), h("span", null, label));
+  const lastAt = x => (ST.data.sess[x.id] || {}).at || 0;       // "Last active": the time its device last checked in (about every 5 minutes while studying)
+  const SORTS = { default: (a, b) => (!!a.approved - !!b.approved) || (b.t || 0) - (a.t || 0),
+    latest: (a, b) => (!!lastAt(b) - !!lastAt(a)) || lastAt(b) - lastAt(a) || (b.t || 0) - (a.t || 0),     // never active: at the end, in both directions
+    oldest: (a, b) => (!!lastAt(b) - !!lastAt(a)) || lastAt(a) - lastAt(b) || (a.t || 0) - (b.t || 0) };
   const draw = () => {
-    const now = ST.off + performance.now(), all = ST.data.users.slice(), q = ST.q.trim().toLowerCase();
+    const now = ST.off + performance.now(), all = ST.data.users.slice(), q = ST.q.trim().toLowerCase(), u = ST.data.users;
+    stats.replaceChildren(stat(u.length, "accounts"), stat(u.filter(x => !x.approved).length, "waiting"), stat(u.filter(x => x.approved).length, "approved"),
+      stat(u.filter(x => !x.approved && trialOf(x, now).key === "running").length, "trials running"), stat(u.filter(x => (x.alerts || []).length).length, "possible sharing"), stat(u.filter(x => lockDirect(x).length).length, "opened a locked function"), stat(u.filter(x => x.approved && !x.admin && x.paused).length, "paused"));
+    sortRow.replaceChildren(h("span", { class: "small muted", style: "align-self:center;margin-right:2px" }, "Sort:"), ...[["default", "Waiting first, newest"], ["latest", "Latest active first"], ["oldest", "Least recently active first"]].map(([k, l]) =>
+      h("button", { class: "chip" + (ST.sort === k ? " on" : ""), type: "button", "aria-pressed": String(ST.sort === k), onclick: () => { ST.sort = k; draw(); } }, l)));
     const filt = { all: () => true, waiting: x => !x.approved, approved: x => x.approved, running: x => !x.approved && trialOf(x, now).key === "running", used: x => !x.approved && ["used", "blocked"].includes(trialOf(x, now).key), sharing: x => (x.alerts || []).length, locked: x => lockDirect(x).length, paused: x => x.approved && !x.admin && x.paused };
     chips.replaceChildren(...[["all", "All"], ["waiting", "Waiting"], ["approved", "Approved"], ["running", "Trial running"], ["used", "Trial used"], ["sharing", "Possible sharing"], ["locked", "Opened locked function"], ["paused", "Paused"]].map(([k, l]) =>
       h("button", { class: "chip" + (ST.f === k ? " on" : ""), type: "button", "aria-pressed": String(ST.f === k), onclick: () => { ST.f = k; draw(); } }, l + " (" + all.filter(filt[k]).length + ")")));
     const shown = all.filter(filt[ST.f]).filter(x => !q || (x.email || x.id).toLowerCase().includes(q))
-      .sort((a, b) => (!!a.approved - !!b.approved) || (b.t || 0) - (a.t || 0));
+      .sort(SORTS[ST.sort] || SORTS.default);
     count.textContent = shown.length + " of " + all.length + " accounts" + (q ? " matching “" + ST.q.trim() + "”" : "");
     list.replaceChildren(...(shown.length ? shown.map(x => card(x, now)) : [h("p", { class: "muted" }, "No accounts match.")]));
   };
   search.addEventListener("input", () => { ST.q = search.value; draw(); });
-  const u = ST.data.users, now = ST.off + performance.now();
-  const stat = (n, label) => h("div", { class: "stat" }, h("b", null, String(n)), h("span", null, label));
+  ST.draw = draw;
   show(h("div", { class: "top" }, h("div", null, h("h1", null, "Deck Review · Admin"), h("p", { class: "sub" }, "Accounts, approvals, free trials and devices")),
       h("div", { class: "btns" }, h("button", { class: "btn alt", type: "button", onclick: viewDash }, "Refresh"), h("button", { class: "btn alt", type: "button", onclick: logOut }, cloud.viaApp ? "Back to the reviewer" : "Log out"))),
     cloud.viaApp ? h("p", { class: "small muted", style: "margin:-6px 0 12px" }, "Opened with your reviewer account " + (cloud.user.email || "") + " (admin).") : null,
     h("p", { class: "small muted", style: "margin:-6px 0 12px", id: "tznote" }, "All times on this page are shown in this device's time zone: " + tzNow() + "."),
     ST.noVault ? h("p", { class: "warnline" }, "The access code is not saved yet: open the reviewer once with your own admin account and type it (one-time setup). Until then nobody can open the reviewer or the free trial.") : null,
-    h("div", { class: "stats" }, stat(u.length, "accounts"), stat(u.filter(x => !x.approved).length, "waiting"), stat(u.filter(x => x.approved).length, "approved"),
-      stat(u.filter(x => !x.approved && trialOf(x, now).key === "running").length, "trials running"), stat(u.filter(x => (x.alerts || []).length).length, "possible sharing"), stat(u.filter(x => lockDirect(x).length).length, "opened a locked function"), stat(u.filter(x => x.approved && !x.admin && x.paused).length, "paused")),
+    stats,
     h("div", { class: "legend", "aria-label": "Colours" }, h("span", { class: "pill green" }, "Trial not used"), h("span", { class: "pill amber" }, "Trial running"), h("span", { class: "pill red" }, "Trial used")),
-    h("div", { class: "search" }, search, chips), count, list);
+    h("div", { class: "search" }, search, chips, sortRow), count, list);
   draw();
 }
 /* plans by function (the owner, 21 Nov 2026): users/{id}.plan = ["F1","F3"]; no plan = full (every account made before this). Prices are the owner's: edit PRICE. */
@@ -279,12 +296,23 @@ function planSheet(x, approving) {                         // choose the functio
     const f = FUNCS.filter(g => sel.has(g)), data = { plan: f.length === 3 ? cloud.api.gone() : f };
     if (approving) { data.approved = true; if (dev > 1) data.devices = dev; }                // 1 device is the usual (no field); 2 or 3 is this account's own limit
     try { await cloud.api.set("users/" + x.id, data, true); } catch (e) { sheet("Could not do that", h("p", null, errText(e)), c => [h("button", { class: "btn", type: "button", onclick: c }, "OK")]); }
-    viewDash();
+    refreshOne(x.id);
   };
   sheet(approving ? "Approve " + who : "Plan for " + who, [h("p", { class: "small muted", style: "margin:0 0 6px" }, "Pick the functions this account paid for. Function 1 = C1 to C11, Function 2 = C12 to C14, Function 3 = C15 to C20. A change applies on their phone within seconds."), row, info].concat(approving ? [h("p", { class: "small muted", style: "margin:12px 0 4px" }, "Devices this account may use (new accounts start with 2; you can change it later with Device limit):"), devRow] : []),
     close => [h("button", { class: "btn", type: "button", onclick: () => save(close) }, approving ? "Approve with this plan" : "Save plan"), h("button", { class: "btn alt", type: "button", onclick: close }, "Cancel")]);
 }
 const RULE_FIX = "match /progress/{uid} {\n  allow read: if (approved() && request.auth.uid == uid) || isAdmin();\n  allow write: if approved() && request.auth.uid == uid;\n}";
+const MOCK_NEED = n => Math.ceil(n * 7 / 10);              // the mock exam pass mark: 70% of every competence (the same rule as the reviewer)
+function mockBlock(L, pct) {                                // which competences were failed in the last mock exam, and how many in percent (the owner, 27 Nov 2026). Only the most recent finished exam is saved.
+  if (!L || !Array.isArray(L.comps) || !L.comps.length) return null;
+  const comps = L.comps, failed = comps.filter(c => c.score < MOCK_NEED(c.n)), nameOf = c => c.code + (c.name ? " " + (c.name.length > 60 ? c.name.slice(0, 58) + "\u2026" : c.name) : "");
+  return [h("h3", { style: "margin:12px 0 4px;font-size:1rem" }, "Last mock exam: competences failed"),
+    h("p", { class: failed.length ? "warnline" : "noteline", style: "margin:0 0 6px", id: "mocksum" }, failed.length
+      ? "Failed " + failed.length + " of " + comps.length + " competences (" + pct(failed.length, comps.length) + "). Each competence needs 70% to pass."
+      : "No competence failed: all " + comps.length + " reached 70% or more."),
+    failed.slice().sort((p, q) => p.score / p.n - q.score / q.n).map(c => h("div", { class: "small mockfail", style: "margin:0 0 4px" }, h("b", null, c.code + " "), c.score + " of " + c.n + " right (" + pct(c.score, c.n) + "), needed " + MOCK_NEED(c.n) + " (70%) \u00b7 " + pct(c.n - c.score, c.n) + " wrong", c.name ? h("div", { class: "muted", style: "font-size:.8rem" }, nameOf(c).slice(c.code.length + 1)) : null)),
+    h("p", { class: "small muted", style: "margin:4px 0 0" }, "From the most recent finished mock exam only (the reviewer keeps just that one). Lowest score first.")];
+}
 async function progressSheet(x) {                          // what this account has studied (read from their saved progress; the admin must be allowed to read it, see RULE_FIX)
   const who = x.email || x.id, done = body => sheet("Progress of " + who, body, c => [h("button", { class: "btn", type: "button", onclick: c }, "Close")]);
   let doc = null;
@@ -306,6 +334,7 @@ async function progressSheet(x) {                          // what this account 
       line("Mastered / Favorites / Notes", n(u.mast) + " / " + n(u.star) + " / " + n(u.notes)), line("Incorrect tags", String(Object.values(u.wrong || {}).filter(w => w && w.on).length)),
       line("Last mock exam", L ? L.score + " of " + L.total + " (" + pct(L.score, L.total) + ") · " + (L.hard ? "Hard" : "Easy") + " mode · " + (L.pass ? "PASS" : "FAIL") + " · " + fmtDT(L.at) : "none yet"),
       line("Unfinished runs", String(n(d.sess)) + (d.exam && !d.exam.done ? " and a mock exam in progress" : ""))),
+    mockBlock(L, pct),
     groups.map(g => [h("h3", { style: "margin:12px 0 4px;font-size:1rem" }, g[1]), rows.filter(r => r[3] === g[0]).map(r => { const s = seenOf(r); return [h("div", { class: "small" }, h("b", null, r[1] + " "), s + " of " + r[4] + " (" + pct(s, r[4]) + ")"), h("div", { class: "bar" }, h("i", { style: "width:" + (r[4] ? Math.min(100, s / r[4] * 100) : 0) + "%" }))]; })]),
     h("p", { class: "small muted", style: "margin:10px 0 0" }, "Read from the account's saved progress. The count of questions seen is out of the full bank for their plan.")]);
 }
@@ -313,7 +342,7 @@ function limitSheet(x) {                                   // this account's own
   let n = +x.devices >= 1 ? +x.devices : ST.slots;
   const val = h("b", { class: "slotsval", id: "ownval" }, String(n));
   const set = k => { n = Math.min(5, Math.max(1, n + k)); val.textContent = String(n); };
-  const save = async (data, close) => { close(); try { await cloud.api.set("users/" + x.id, data, true); } catch (e) { sheet("Could not do that", h("p", null, errText(e)), c => [h("button", { class: "btn", type: "button", onclick: c }, "OK")]); } viewDash(); };
+  const save = async (data, close) => { close(); try { await cloud.api.set("users/" + x.id, data, true); } catch (e) { sheet("Could not do that", h("p", null, errText(e)), c => [h("button", { class: "btn", type: "button", onclick: c }, "OK")]); } refreshOne(x.id); };
   sheet("Devices for " + (x.email || x.id), [h("p", { class: "small muted", style: "margin:0 0 10px" }, "Only this account. Now: " + (+x.devices >= 1 ? x.devices + " (its own limit)" : "1 (the usual)") + ". Lowering it does not log anyone out; use Reset devices for that."),
     h("div", { class: "stepper" }, h("button", { class: "btn alt", type: "button", "aria-label": "One fewer", onclick: () => set(-1) }, "−"), val, h("button", { class: "btn alt", type: "button", "aria-label": "One more", onclick: () => set(1) }, "+"))],
     close => [h("button", { class: "btn", type: "button", onclick: () => save({ devices: n }, close) }, "Save for this account"),
@@ -324,7 +353,7 @@ function card(x, now) {
   const me = cloud.user.uid, d = ST.data.devs[x.id], s = ST.data.sess[x.id], tr = trialOf(x, now), ids = (d && d.ids) || [];
   const lim = +x.devices >= 1 ? +x.devices : ST.slots, own = +x.devices >= 1;
   const status = x.admin ? h("span", { class: "pill blue" }, "Admin") : x.approved && x.paused ? h("span", { class: "pill amber" }, "Paused") : x.approved ? h("span", { class: "pill green" }, "Approved") : h("span", { class: "pill grey" }, "Waiting for approval");
-  const act = (label, cls, fn, ask) => h("button", { class: "btn " + cls, type: "button", onclick: async () => { if (ask && !(await confirmBox(label, ask, label))) return; try { await fn(); } catch (e) { sheet("Could not do that", h("p", null, errText(e)), c => [h("button", { class: "btn", type: "button", onclick: c }, "OK")]); } viewDash(); } }, label);
+  const act = (label, cls, fn, ask) => h("button", { class: "btn " + cls, type: "button", onclick: async () => { if (ask && !(await confirmBox(label, ask, label))) return; try { await fn(); } catch (e) { sheet("Could not do that", h("p", null, errText(e)), c => [h("button", { class: "btn", type: "button", onclick: c }, "OK")]); } refreshOne(x.id); } }, label);
   const who = x.email || x.id;
   const acts = x.id === me ? [] : !x.approved
     ? [h("button", { class: "btn", type: "button", onclick: () => planSheet(x, true) }, "Approve"),
@@ -342,7 +371,8 @@ function card(x, now) {
          : act("Pause access", "alt", () => cloud.api.set("users/" + x.id, { paused: true, pausedAt: Date.now() }, true), "Pause " + who + "? They are blocked within seconds and see a message that their access is paused. Their account, plan, devices and saved progress are all kept. You can resume any time."),
        x.admin ? null : act("Remove access", "warn", () => cloud.api.set("users/" + x.id, { approved: false }, true), "Remove access for " + who + "? They are logged out the next time their device is online.")];
   if (!x.admin && !x.approved && (tr.key === "used" || tr.key === "blocked")) acts.push(act("Allow a new trial", "alt", async () => {
-    for (const t of ST.data.trials.filter(t => t.uid === x.id || (x.trialBlocked && x.trialBlocked.by && t.email === x.trialBlocked.by))) await cloud.api.del("trials/" + t.id);
+    const marks = await cloud.api.list("trials");                                      // the device marks are read only now, not on every load of the page
+    for (const t of marks.filter(t => t.uid === x.id || (x.trialBlocked && x.trialBlocked.by && t.email === x.trialBlocked.by))) await cloud.api.del("trials/" + t.id);
     await cloud.api.set("users/" + x.id, { trialStart: cloud.api.gone(), trialBlocked: cloud.api.gone(), trialDev: cloud.api.gone() }, true);
   }, "Give " + who + " a new 3-hour free trial? This also frees the device marks of this trial, so the device can be used for a trial again."));
   return h("div", { class: "card acc " + (x.admin ? "admin" : x.approved && x.paused ? "paused" : x.approved ? "approved" : "waiting"), "data-email": who },
