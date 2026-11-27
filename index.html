@@ -460,11 +460,11 @@ details summary{cursor:pointer;min-height:44px;display:flex;align-items:center;f
 <script>
 "use strict";
 const VAULT = {"v": 2, "it": 600000, "s": "dJV9KmgEbEQFANM/JHR2vg==", "i": "AgsXurjjLKQwoW82", "f": "bank-94bd81cbdbae.bin"};                               // the lock header only {s, i, it, f}: the encrypted question bank itself is the separate file VAULT.f (the owner, 25 Nov 2026: the page was 1 MB heavier than it needs to be)
-const TVAULT = {"v": 2, "it": 600000, "s": "yNebhp65k7IRsKtoMZ0tRQ==", "i": "qXzdjmDTgNWIm8/0", "f": "trial-1e772c4184e9.bin"};                              // the free-trial bank (50 questions per competence, the owner 22 Nov 2026), its own key (Firestore secret/trial)
+const TVAULT = {"v": 2, "it": 600000, "s": "amvat62u+rcdMoC48aVLEg==", "i": "hF0pBDbSQ7XonKYJ", "f": "trial-6bdeb93de3a1.bin"};                              // the free-trial bank (50 questions per competence, the owner 22 Nov 2026), its own key (Firestore secret/trial)
 const FULL_TOTAL = 6706, TRIAL_PER = 50, FULL_COMP = 18;   // numbers put in by build.py: every question in the full reviewer, and the trial's questions per competence
 const FB = {"apiKey": "AIzaSyBhLM8KRG4dXRWp7MMa4T49BU3-X-G1vw8", "authDomain": "deck-reviewer-c6083.firebaseapp.com", "projectId": "deck-reviewer-c6083", "storageBucket": "deck-reviewer-c6083.firebasestorage.app", "messagingSenderId": "385286445064", "appId": "1:385286445064:web:be38e62aef158ab27499bd"};                          // Firebase web config stamped by build.py (null = the old shared-password lock)
 const PFX = "deckreviewer:";
-const BUILD_ID = "7b1b68359f99";                       // stamped by build.py; compared with version.json to detect a newer version
+const BUILD_ID = "008c8122e9d5";                       // stamped by build.py; compared with version.json to detect a newer version
 const LAST_UPDATED = "November 24, 2026";                 // stamped by build.py (--update-date)
 const NUM_RE = /^\s*(\d+)\s*[.)](?!\d)\s*/;          // same rule as build.py (display only)
 const ITEMS_BY_CODE = { C1: 10, C2: 10, C3: 10, C4: 10, C5: 10, C6: 10, C8: 10, C9: 10, C10: 20, C11: 10, C12: 15, C13: 10, C14: 10, C15: 15, C16: 10, C17: 10, C18: 10, C20: 10 };
